@@ -18,8 +18,6 @@
 	// Gets the command given from the protocol.
 	// 1 - create
 	// 2 - destroy
-	// 3 - add
-	// 4 - remove
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -36,12 +34,10 @@ int getCommand(char* buf) {
 
 	if(strcmp(command, "create") == 0) {
 		return 1;
-	}else if(strcmp(command, "destroy") == 0) {
+	} else if(strcmp(command, "destroy") == 0) {
 		return 2;
-	}else if(strcmp(command, "add") == 0) {
-		return 3;
-	}else if(strcmp(command, "remove") == 0) {
-		return 4;
+	} else  {
+		;
 	}
 	
 	return 0;
@@ -74,7 +70,8 @@ char* getProjectName(char* buf) {
 }
 
 	// 3.6 -- create
-void create(char* projName, int sockfd) {
+int create(char* projName, int sockfd) {
+
 	// Check if projName already exits.
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
@@ -120,6 +117,13 @@ void create(char* projName, int sockfd) {
 	write(fd, "1", 1);
 	close(fd);
 
+	char sendBuf[3];
+	sendBuf[0] = '1';
+	sendBuf[1] = '\n';
+
+	write(sockfd, sendBuf, 3);
+
+	return 0;
 }
 
 
@@ -266,15 +270,10 @@ int main(int argc, char** argv) {
 		n = read(newsockfd, buffer, n);
 	}
 
-//	printf("%s\n", buffer);
-
-	//n = write(newsockfd, "Successfully connected to client.", 30);
 
 		// Get the command given from client. (Create, history, rollback, etc...)
 		// 1 - create
 		// 2 - destroy
-		// 3 - add
-		// 4 - remove
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -282,14 +281,12 @@ int main(int argc, char** argv) {
 		char* projectName = getProjectName(buffer);
 		create(projectName, newsockfd);
 		free(projectName);
-	}else if(command == 2){
+	} else if(command == 2){
 		char* projectName = getProjectName(buffer);
 		destroy(projectName, newsockfd);
 		free(projectName);
-	}else if(command == 3){
-		//add file to project
-	}else if(command == 4){
-		//remove file from project
+	} else {
+		;
 	}
 
 

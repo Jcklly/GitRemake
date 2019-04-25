@@ -14,7 +14,7 @@
 #include <sys/select.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
-//samer shaban
+
 	// Returns either IP Address or port from ./.configure file
 	// 1 = get port
 	// Anything else = get IP Address
@@ -86,7 +86,6 @@ void create(char* projName) {
 	}
 
 
-//	struct sockaddr_in clientAddr;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
@@ -125,15 +124,7 @@ void create(char* projName) {
 	strcat(sendBuf, ":");
 	strcat(sendBuf, projName);
 
-	
-	char totalL[10];
-	snprintf(totalL, 10, "%d", strlen(sendBuf));
-	
-//	printf("%s\n", totalL);
-
-//	n = write(sockfd, totalL, strlen(totalL));
 	n = write(sockfd, sendBuf, strlen(sendBuf));
-	
 	
         fd_set set;
         struct timeval timeout;
@@ -253,71 +244,35 @@ void destroy(char* projName) {
 
 }
 
-void add(char* projName, char* fileName) {//not complete
+void clientAdd(char* projName, char* fileName) {
 
-	int sockfd = -1;
-	int newsockfd = -1;
-	int addrInfo = -1;
+	// Check if project exists on the client side.
+	
+	
+	// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
 
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if(sockfd == -1) {
-		fprintf(stderr, "Error destroying server socket.\n");
-		exit(1);
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						fprintf(stderr, "Project: '%s' already exists on server.\n", projName);
+						return;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
 	}
-
-
-//	struct sockaddr_in clientAddr;
-	struct sockaddr_in serverAddr;	
-
-		// Obtain IP Address and Port from .configure file
-	char* ipAddress = getConfig(2);
-	char* portS = getConfig(1);
-	int portNum = atoi(portS);
-
-	bzero((char*)&serverAddr, sizeof(serverAddr));
-
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
-	serverAddr.sin_port = htons(portNum);
-
-
-	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
-		fprintf(stderr, "Error connecting client to server.\n");
-		exit(1);
-	} else {
-		printf("Established connection to server.\n");
-	}
-
-		// Send project name to server.
-		// destroy:<strlen(projName):projName>
-
-	int n = 0;
-	
-	char sendBuf[11 + strlen(projName)];
-	bzero(sendBuf, 11 + strlen(projName));
-
-	char pnBytes[2];
-	snprintf(pnBytes, 10, "%d", strlen(projName));
-
-	strcpy(sendBuf, "destroy:");
-	strcat(sendBuf, pnBytes);
-	strcat(sendBuf, ":");
-	strcat(sendBuf, projName);
-
-	
-	char totalL[10];
-	snprintf(totalL, 10, "%d", strlen(sendBuf));
-	
-//	printf("%s\n", totalL);
-
-//	n = write(sockfd, totalL, strlen(totalL));
-	n = write(sockfd, sendBuf, strlen(sendBuf));
-	
-
-	close(sockfd);
-
-	free(ipAddress);
-	free(portS);
 
 }
 
@@ -400,57 +355,19 @@ int main(int argc, char* argv[]) {
 			resolveIP();
 			create(argv[2]);
 		}
+	} else if (strcmp(argv[1], "add") == 0) {
+	
+		if(argc != 4) {
+			fprintf(stderr, "Invalid number of arguments for CONFIGURE.\nExpected 2.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			clientAdd(argv[2], argv[3]);
+		}
+
 	} else {
 		;
 	}
 
-	
-	
-	
-	
-	
-	
-	
-	
-
-/*
-	int sockfd = -1;
-	int newsockfd = -1;
-	int addrInfo = -1;
-
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if(sockfd == -1) {
-		fprintf(stderr, "Error creating server socket.\n");
-		exit(1);
-	}
-
-
-	struct sockaddr_in clientAddr;
-	struct sockaddr_in serverAddr;	
-
-
-	char* sendString = "Hello, this message is from the client!";
-
-	bzero((char*)&serverAddr, sizeof(serverAddr));
-
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	serverAddr.sin_port = htons(PORT);
-
-
-	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
-		fprintf(stderr, "Error connecting client to server.\n");
-		exit(1);
-	}
-
-	char buffer[256];
-	bzero(buffer, 256);
-	int n = 0;
-	n = write(sockfd, sendString, 40);
-	n = read(sockfd, buffer, 255);
-
-	printf("%s\n", buffer);
-*/
 
 	return 0;
 }
