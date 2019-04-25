@@ -244,13 +244,14 @@ void destroy(char* projName) {
 
 }
 
-void clientAdd(char* projName, char* fileName) {
+	// 3.8 && 3.9 -- Adds or Removes filename from .Manifest on client side
+	// flag represents whether we are 'adding' or 'removing'
+	// 1 -- add
+	// 2 -- remove
+void add_or_remove(int flag, char* projName, char* fileName) {
 
 	// Check if project exists on the client side.
-	
-	
-	// Check if projName already exits.
-	DIR *d = opendir(".server");		
+	DIR *d = opendir(".");		
 	struct dirent *status = NULL;
 
 	if(d != NULL) {
@@ -355,13 +356,17 @@ int main(int argc, char* argv[]) {
 			resolveIP();
 			create(argv[2]);
 		}
-	} else if (strcmp(argv[1], "add") == 0) {
+	} else if ( (strcmp(argv[1], "add") == 0) || (strcmp(argv[1], "remove") == 0) ) {
 	
 		if(argc != 4) {
 			fprintf(stderr, "Invalid number of arguments for CONFIGURE.\nExpected 2.\nReceived %d\n", argc-2);
 			exit(1);
 		} else {
-			clientAdd(argv[2], argv[3]);
+			if(strcmp(argv[1], "add") == 0) {
+				add_or_remove(1, argv[2], argv[3]);
+			} else {
+				add_or_remove(2, argv[2], argv[3]);
+			}
 		}
 
 	} else {

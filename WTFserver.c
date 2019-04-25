@@ -117,11 +117,11 @@ int create(char* projName, int sockfd) {
 	write(fd, "1", 1);
 	close(fd);
 
-	char sendBuf[3];
+	char sendBuf[2];
 	sendBuf[0] = '1';
 	sendBuf[1] = '\n';
 
-	write(sockfd, sendBuf, 3);
+	write(sockfd, sendBuf, 2);
 
 	return 0;
 }
@@ -225,6 +225,8 @@ int main(int argc, char** argv) {
 		exit(1);
 	}
 
+	while(1) {
+
 		// Listen for client connections
 	listen(sockfd, 25);
 
@@ -288,7 +290,7 @@ int main(int argc, char** argv) {
 	} else {
 		;
 	}
-
+	}
 
 ///////////////////////////////
 
