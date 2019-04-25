@@ -12,7 +12,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/select.h>
-#include <>
+#include <sys/ioctl.h>
+#include <sys/time.h>
 
 	// Returns either IP Address or port from ./.configure file
 	// 1 = get port
@@ -134,6 +135,12 @@ void create(char* projName) {
 //	n = write(sockfd, totalL, strlen(totalL));
 	n = write(sockfd, sendBuf, strlen(sendBuf));
 	
+
+
+
+
+
+
 
 	close(sockfd);
 
