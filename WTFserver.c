@@ -16,7 +16,10 @@
 #include <sys/stat.h>
 
 	// Gets the command given from the protocol.
-	// 1 = create
+	// 1 - create
+	// 2 - destroy
+	// 3 - add
+	// 4 - remove
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -33,6 +36,12 @@ int getCommand(char* buf) {
 
 	if(strcmp(command, "create") == 0) {
 		return 1;
+	}else if(strcmp(command, "destroy") == 0) {
+		return 2;
+	}else if(strcmp(command, "add") == 0) {
+		return 3;
+	}else if(strcmp(command, "remove") == 0) {
+		return 4;
 	}
 	
 	return 0;
@@ -65,10 +74,7 @@ char* getProjectName(char* buf) {
 }
 
 	// 3.6 -- create
-int create(char* projName, int sockfd) {
-
-
-
+void create(char* projName, int sockfd) {
 	// Check if projName already exits.
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
@@ -78,7 +84,7 @@ int create(char* projName, int sockfd) {
 		status = readdir(d);
 
 		do {
-			if( status->d_type == DT_DIR ) {
+			if( status->d_type == DT_DIR ) { 
 				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
 					;
 				} else {
@@ -114,15 +120,62 @@ int create(char* projName, int sockfd) {
 	write(fd, "1", 1);
 	close(fd);
 
-	char sendBuf[3];
-	sendBuf[0] = '1';
-	sendBuf[1] = '\n';
-
-	write(sockfd, sendBuf, 3);
-
-	return 0;
 }
 
+
+
+
+
+
+void destroy(char* projName, int sockfd) {
+	// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) {
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						//remove project
+						
+						//
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+	// If here, then project does not already exists. Proceed.
+	char newDir[strlen(projName) + 21];
+	strcpy(newDir, "./.server/");
+	strcat(newDir, projName);
+	mkdir(newDir, 0700);
+
+	// Initialize .manifest inside new project directory.
+
+	strcat(newDir, "/.Manifest");
+	
+        int fd = open(newDir, O_CREAT | O_RDWR, 0644);
+
+        if(fd < 0) {
+                fprintf(stderr, "Configure never ran. Please run:\n./WTF configure <IP> <PORT>\n");
+                exit(1);
+        }
+
+	write(fd, "1", 1);
+
+	close(fd);
+
+}
 
 int main(int argc, char** argv) {
 
@@ -176,8 +229,10 @@ int main(int argc, char** argv) {
 	struct sockaddr_in clientAddr;
 	
 	clientAddrInfo = sizeof(clientAddr);
-
-	newsockfd = accept(sockfd, (struct sockaddr*)&clientAddr, &clientAddrInfo); 
+	//client connection
+	//newsockfd is client name, make a data structure for all clients
+	//need to loop somehow for multi threading
+	newsockfd = accept(sockfd, (struct sockaddr*)&clientAddr, &clientAddrInfo);
 	if(newsockfd >= 0) {
 		printf("Successfully connected to a client.\n");
 	}
@@ -194,9 +249,9 @@ int main(int argc, char** argv) {
 
 	timeout.tv_sec = 5;
 	timeout.tv_usec = 0;
-
+	//ensures something is bring read from client
 	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
-
+	//n is length of buffer
 	i = ioctl(newsockfd, FIONREAD, &n);
 	
 	if(i < 0) {
@@ -213,10 +268,13 @@ int main(int argc, char** argv) {
 
 //	printf("%s\n", buffer);
 
-//	n = write(newsockfd, "Successfully connected to client.", 30);
+	//n = write(newsockfd, "Successfully connected to client.", 30);
 
 		// Get the command given from client. (Create, history, rollback, etc...)
-		// 1 -- create
+		// 1 - create
+		// 2 - destroy
+		// 3 - add
+		// 4 - remove
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -224,9 +282,18 @@ int main(int argc, char** argv) {
 		char* projectName = getProjectName(buffer);
 		create(projectName, newsockfd);
 		free(projectName);
+	}else if(command == 2){
+		char* projectName = getProjectName(buffer);
+		destroy(projectName, newsockfd);
+		free(projectName);
+	}else if(command == 3){
+		//add file to project
+	}else if(command == 4){
+		//remove file from project
 	}
 
 
+///////////////////////////////
 
 	close(newsockfd);
 	close(sockfd);
