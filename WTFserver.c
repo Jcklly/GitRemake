@@ -112,10 +112,14 @@ int create(char* projName, int sockfd) {
         }
 
 	write(fd, "1", 1);
-
 	close(fd);
 
-	
+	char sendBuf[3];
+	sendBuf[0] = '1';
+	sendBuf[1] = '\n';
+
+	write(sockfd, sendBuf, 3);
+
 	return 0;
 }
 
@@ -209,7 +213,7 @@ int main(int argc, char** argv) {
 
 //	printf("%s\n", buffer);
 
-	n = write(newsockfd, "Successfully connected to client.", 30);
+//	n = write(newsockfd, "Successfully connected to client.", 30);
 
 		// Get the command given from client. (Create, history, rollback, etc...)
 		// 1 -- create

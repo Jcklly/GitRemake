@@ -113,7 +113,8 @@ void create(char* projName) {
 		// Send project name to server.
 		// create:<strlen(projName):projName>
 
-	int n = 0;
+	int n, i, recLength;
+	n = i = recLength = 0;
 	
 	char sendBuf[11 + strlen(projName)];
 	bzero(sendBuf, 11 + strlen(projName));
@@ -135,13 +136,50 @@ void create(char* projName) {
 //	n = write(sockfd, totalL, strlen(totalL));
 	n = write(sockfd, sendBuf, strlen(sendBuf));
 	
+	
+        fd_set set;
+        struct timeval timeout;
 
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
 
+        timeout.tv_sec = 5;
+        timeout.tv_usec = 0;
 
+        select(FD_SETSIZE, &set, NULL, NULL, &timeout);
 
+        i = ioctl(sockfd, FIONREAD, &recLength);
 
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+                exit(1);
+        }
 
+        char recBuf[recLength+1];
+        bzero(recBuf, recLength+1);
 
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+	
+	if(recLength == 0) {
+		printf("Project name: `%s` already exists on server.\n", projName);
+		return;
+	}
+	
+	printf("File received from server: `.Manifest`.\nPlease store it in directory: `%s`\nmv .Manifest %s\n", projName, projName);
+
+	
+	int fd = open(".Manifest", O_CREAT | O_RDWR, 0644);
+	if (fd == -1) {
+		printf("Invalid open: `.Manifest`\n");
+		return;
+	}
+
+	write(fd, recBuf, strlen(recBuf));
+
+	
+	close(fd);
 	close(sockfd);
 
 	free(ipAddress);
