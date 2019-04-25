@@ -14,7 +14,7 @@
 #include <sys/select.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
-
+//samer shaban
 	// Returns either IP Address or port from ./.configure file
 	// 1 = get port
 	// Anything else = get IP Address
@@ -74,9 +74,7 @@ char* getConfig(int flag) {
 }
 
 void create(char* projName) {
-
 	
-
 	int sockfd = -1;
 	int newsockfd = -1;
 	int addrInfo = -1;
@@ -178,8 +176,144 @@ void create(char* projName) {
 
 	write(fd, recBuf, strlen(recBuf));
 
-	
+
 	close(fd);
+	close(sockfd);
+
+	free(ipAddress);
+	free(portS);
+
+}
+
+void destroy(char* projName) {
+
+	int sockfd = -1;
+	int newsockfd = -1;
+	int addrInfo = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error destroying server socket.\n");
+		exit(1);
+	}
+
+
+//	struct sockaddr_in clientAddr;
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// destroy:<strlen(projName):projName>
+
+	int n = 0;
+	
+	char sendBuf[11 + strlen(projName)];
+	bzero(sendBuf, 11 + strlen(projName));
+
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "destroy:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	
+	char totalL[10];
+	snprintf(totalL, 10, "%d", strlen(sendBuf));
+	
+//	printf("%s\n", totalL);
+
+//	n = write(sockfd, totalL, strlen(totalL));
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+	
+
+	close(sockfd);
+
+	free(ipAddress);
+	free(portS);
+
+}
+
+void add(char* projName, char* fileName) {//not complete
+
+	int sockfd = -1;
+	int newsockfd = -1;
+	int addrInfo = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error destroying server socket.\n");
+		exit(1);
+	}
+
+
+//	struct sockaddr_in clientAddr;
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// destroy:<strlen(projName):projName>
+
+	int n = 0;
+	
+	char sendBuf[11 + strlen(projName)];
+	bzero(sendBuf, 11 + strlen(projName));
+
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "destroy:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	
+	char totalL[10];
+	snprintf(totalL, 10, "%d", strlen(sendBuf));
+	
+//	printf("%s\n", totalL);
+
+//	n = write(sockfd, totalL, strlen(totalL));
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+	
+
 	close(sockfd);
 
 	free(ipAddress);
@@ -270,6 +404,14 @@ int main(int argc, char* argv[]) {
 		;
 	}
 
+	
+	
+	
+	
+	
+	
+	
+	
 
 /*
 	int sockfd = -1;
