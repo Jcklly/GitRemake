@@ -14,7 +14,7 @@
 #include <sys/select.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
-
+//samer shaban
 	// Returns either IP Address or port from ./.configure file
 	// 1 = get port
 	// Anything else = get IP Address
