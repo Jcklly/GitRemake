@@ -11,9 +11,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
-#define PORT 9088
-
+#include <sys/select.h>
+#include <>
 
 	// Returns either IP Address or port from ./.configure file
 	// 1 = get port
