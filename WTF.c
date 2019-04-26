@@ -503,7 +503,7 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 
 		fd = open(pathManifest, O_APPEND | O_RDWR);
 		if(fd < 0) {
-			printf("Error opening file: %s\n", fileName);
+			fprintf(stderr, "Error opening file: %s\n", pathManifest);
 			exit(1);
 		}		
 
@@ -515,7 +515,7 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 
 		rfd = read(fd, manifestBuf, (int)fileSize);
 		if(rfd < 0) {
-			fprintf(stderr, "Error readiing from file: %s", fileName);
+			fprintf(stderr, "Error readiing from file: %s\n", pathManifest);
 			exit(1);
 		}
 		
@@ -712,13 +712,15 @@ void checkout(char* projName) {
 
 	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
 		fprintf(stderr, "Error connecting client to server.\n");
+		free(ipAddress);
+		free(portS);
 		exit(1);
 	} else {
 		printf("Established connection to server.\n");
 	}
 
 		// Send project name to server.
-		// create:<strlen(projName):projName>
+		// checkout:<strlen(projName):projName>
 
 	int n, i, recLength;
 	n = i = recLength = 0;
@@ -799,12 +801,111 @@ void checkout(char* projName) {
 		exit(1);
 	}
 
+	close(sockfd);
 	free(ipAddress);
 	free(portS);
-	close(sockfd);
 }
 
+	// 3.10 - Gets current version of given project name from the server
+void currentVersion(char* projName) {
 
+		// connect to server
+	int sockfd = -1;
+	int newsockfd = -1;
+	int addrInfo = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error creating server socket.\n");
+		exit(1);
+	}
+
+
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// currentversion:  :<projName>
+	int n, i, recLength;
+	n = i = recLength = 0;
+	
+	char sendBuf[19 + strlen(projName)];
+	bzero(sendBuf, 19 + strlen(projName));
+	
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "currentversion:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+	
+        fd_set set;
+        struct timeval timeout;
+
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+        select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+        i = ioctl(sockfd, FIONREAD, &recLength);
+
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+                exit(1);
+        }
+
+        char recBuf[recLength+1];
+        bzero(recBuf, recLength+1);
+
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+	
+	if(recLength == 0) {
+		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	
+	printf("Received current versions of files from project: `%s` from the server.\nFILE NAME : VERSION NUMBER\n", projName);
+	printf("%s\n", recBuf);
+
+
+	close(sockfd);
+	free(ipAddress);
+	free(portS);
+}
 
 	// 3.0 - Stores IP Address and Port into ./.configure file.
 void configure(char* port, char* addr) {
@@ -868,7 +969,7 @@ int main(int argc, char* argv[]) {
 	} else if ( (strcmp(argv[1], "add") == 0) || (strcmp(argv[1], "remove") == 0) ) {
 	
 		if(argc != 4) {
-			fprintf(stderr, "Invalid number of arguments for CONFIGURE.\nExpected 2.\nReceived %d\n", argc-2);
+			fprintf(stderr, "Invalid number of arguments for ADD/REMOVE.\nExpected 2.\nReceived %d\n", argc-2);
 			exit(1);
 		} else {
 			if(strcmp(argv[1], "add") == 0) {
@@ -881,11 +982,21 @@ int main(int argc, char* argv[]) {
 	} else if(strcmp(argv[1], "checkout") == 0) {
 
 		if(argc != 3) {
-			fprintf(stderr, "Invalid number of arguments for CREATE.\nExpected 1.\nReceived %d\n", argc-2);
+			fprintf(stderr, "Invalid number of arguments for CHECKOUT.\nExpected 1.\nReceived %d\n", argc-2);
 			exit(1);
 		} else {
 			resolveIP();
 			checkout(argv[2]);
+		}
+	} else if(strcmp(argv[1], "currentversion") == 0) {
+
+		if(argc != 3) {
+
+			fprintf(stderr, "Invalid number of arguments for CURRENTVERSION.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			currentVersion(argv[2]);
 		}
 	}
 

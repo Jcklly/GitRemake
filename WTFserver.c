@@ -14,11 +14,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include "helper.h"
 
 	// Gets the command given from the protocol.
 	// 1 - create
 	// 2 - destroy
 	// 3 - checkout
+	// 4 - currentversion
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -42,6 +44,9 @@ int getCommand(char* buf) {
 	} else if(strcmp(command, "checkout") == 0) {
 		printf("Received CHECKOUT command from client.\n");
 		return 3;
+	} else if(strcmp(command, "currentversion") == 0) {
+		printf("Received CURRENTVERSION command from client.\n");
+		return 4;
 	} else {
 		;
 	}
@@ -74,6 +79,156 @@ char* getProjectName(char* buf) {
 
 
 }
+
+
+	// Rebuilds the .Manifest for a given project using the array of structs of parsed .Manifest info
+int rebuildManifest(files* f, char* path, int lines) {
+
+
+	int i, totalBytes;
+	i = totalBytes = 0;
+
+		// Get totalBytes to create buffer that will contain new .Manifest
+	while(i < lines) {
+	
+		totalBytes += (strlen(f[i].file_name) + strlen(f[i].file_hash) + 10);
+		++i;
+	}
+
+	
+	i = 0;
+	char buffer[totalBytes];
+	char vn[5];
+	bzero(buffer, totalBytes);
+	
+	while(i < lines) {
+		if(f[i].version_number == 0) {
+			++i;
+			continue;
+		}
+		sprintf(vn, "%d", f[i].version_number);
+		if(strcmp(f[i].file_name, ".Manifest") == 0) {
+			strcpy(buffer, vn);
+			strcat(buffer, "\n");
+			bzero(vn, 5);
+			
+		} else {
+			strcat(buffer, vn);
+			strcat(buffer, " ");
+			strcat(buffer, f[i].file_name);
+			strcat(buffer, " ");
+			strcat(buffer, f[i].file_hash);
+			strcat(buffer, "\n");
+			bzero(vn, 5);
+		}
+		++i;
+	}
+
+		// Removes old .Manifest
+	int rmv = remove(path);
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing file: %s\n", path);
+		return 0;
+	}
+
+	int fd = open(path, O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		printf("Error opening file: %s\n", path);
+		exit(1);
+	}
+	write(fd, buffer, strlen(buffer));
+	close(fd);
+	
+}
+
+
+	// Parses fileName, version #, and hash into array of structs. 
+void parseManifest(files* f, char* projName) {
+
+	
+	char pathManifest[strlen(projName) + 20];
+	strcpy(pathManifest, ".server/");
+	strcat(pathManifest, projName);
+	strcat(pathManifest, "/.Manifest");
+
+
+
+	int fd = open(pathManifest, O_RDONLY);		
+	if(fd < 0) {
+		printf("Error opening file: %s\n", pathManifest);
+		exit(1);
+	}		
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	char buffer[(int)fileSize + 1];
+
+	int rfd = read(fd, buffer, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from file: %s", pathManifest);
+		exit(1);
+	}
+	close(fd);
+
+	int numElements, line, i;
+	i = numElements = line = 0;
+	
+	while(buffer[i] != '\n') {
+		++i;
+	}	
+
+		// Set first file to .Manifest in struct
+	
+	strcpy(f[line].file_name, ".Manifest");
+	strcpy(f[line].file_hash, "NULL");
+	char temp[i];
+	memcpy(temp, buffer, i);
+	f[line].version_number = atoi(temp);
+	++line;
+	++i;	
+
+	char newTemp[strlen(buffer)-i];
+	memcpy(newTemp, buffer+i, strlen(buffer)-i);
+
+	i = 0;
+	while(i < strlen(newTemp)) {
+		if(newTemp[i] == ' ') {
+			++numElements;
+		}
+		if(newTemp[i] == '\n') {
+			++numElements;
+			newTemp[i] = ',';
+		}
+		++i;
+	}
+
+	char* tokenized[numElements];
+	i = 0;
+	tokenized[i] = strtok(newTemp, " ,");
+	
+	while(tokenized[i] != NULL) {
+		tokenized[++i] = strtok(NULL, " ,");
+	}
+
+	i = 0;
+	while(i < numElements) {
+		if(i%3 == 0) {
+			++line;
+		}
+		if(i+1 > numElements || i+2 > numElements) {
+			break;
+		}
+		f[line-1].version_number = atoi(tokenized[i]);
+		strcpy(f[line-1].file_name, tokenized[i+1]);
+		strcpy(f[line-1].file_hash, tokenized[i+2]);
+		i += 3;
+	}
+
+
+}
+
 
 	// 3.6 -- create
 int create(char* projName, int sockfd) {
@@ -266,6 +421,112 @@ int checkout(char* projName, int sockfd) {
 	}
 }
 
+int currentversion(char* projName, int sockfd) {
+
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
+
+		// Project exists, parse and send manifest info to client
+
+	char pathManifest[strlen(projName) + 20];
+	strcpy(pathManifest, ".server/");
+	strcat(pathManifest, projName);
+	strcat(pathManifest, "/.Manifest");
+
+	int fd = open(pathManifest, O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening file: %s\n", pathManifest);
+		return 1;
+	}
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END);
+	lseek(fd, cp, SEEK_SET);
+
+	char manifestBuf[(int)fileSize + 1];
+
+	int rfd = read(fd, manifestBuf, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "error reading from file: %s\n", pathManifest);
+		return 1;	
+	}
+	close(fd);
+
+		// Gets number of lines from .Manifest
+	int i = 0;
+	int numLines = 0;
+	while(i < (int)fileSize) {
+		if(manifestBuf[i] == '\n') {
+			++numLines;
+		}
+		++i;
+	}
+
+		// Create files struct for .Manifest
+	files *f = malloc(numLines * sizeof(*f));
+	parseManifest(f, projName);
+	
+	char buffer[numLines*sizeof(*f)];
+	char vn[5];
+
+	i = 0;
+	while(i < numLines) {
+		sprintf(vn, "%d", f[i].version_number);
+		if(i == 0) {
+			strcpy(buffer, f[i].file_name);
+			strcat(buffer, " : ");
+			strcat(buffer, vn);
+			strcat(buffer, "\n");
+			bzero(vn, 5);
+		} else {
+			strcat(buffer, f[i].file_name);
+			strcat(buffer, " : ");
+			strcat(buffer, vn);
+			strcat(buffer, "\n");
+			bzero(vn, 5);
+		}
+		++i;
+	}
+
+
+		// Send to cliient	
+	write(sockfd, buffer, strlen(buffer));
+	printf("Current versions successfully sent to the client.\n");
+
+	free(f);
+	return 0;	
+
+}
 
 int main(int argc, char** argv) {
 
@@ -363,6 +624,7 @@ int main(int argc, char** argv) {
 		// 1 - create
 		// 2 - destroy
 		// 3 - checkout
+		// 4 - currentversion
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -370,13 +632,17 @@ int main(int argc, char** argv) {
 		char* projectName = getProjectName(buffer);
 		create(projectName, newsockfd);
 		free(projectName);
-	} else if(command == 2){
+	} else if(command == 2) {
 		char* projectName = getProjectName(buffer);
 		destroy(projectName, newsockfd);
 		free(projectName);
 	} else if(command == 3) {
 		char* projectName = getProjectName(buffer);
 		checkout(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 4) {
+		char* projectName = getProjectName(buffer);
+		currentversion(projectName, newsockfd);
 		free(projectName);
 	} else {
 		;
