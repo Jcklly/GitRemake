@@ -18,6 +18,7 @@
 	// Gets the command given from the protocol.
 	// 1 - create
 	// 2 - destroy
+	// 3 - checkout
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -36,7 +37,9 @@ int getCommand(char* buf) {
 		return 1;
 	} else if(strcmp(command, "destroy") == 0) {
 		return 2;
-	} else  {
+	} else if(strcmp(command, "checkout") == 0) {
+		return 3;
+	} else {
 		;
 	}
 	
@@ -181,6 +184,12 @@ void destroy(char* projName, int sockfd) {
 
 }
 
+
+int checkout(char* projName, int sockfd) {
+
+}
+
+
 int main(int argc, char** argv) {
 
 	if(argc != 2) {
@@ -276,6 +285,7 @@ int main(int argc, char** argv) {
 		// Get the command given from client. (Create, history, rollback, etc...)
 		// 1 - create
 		// 2 - destroy
+		// 3 - checkout
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -286,6 +296,10 @@ int main(int argc, char** argv) {
 	} else if(command == 2){
 		char* projectName = getProjectName(buffer);
 		destroy(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 3) {
+		char* projectName = getProjectName(buffer);
+		checkout(projectName, newsockfd);
 		free(projectName);
 	} else {
 		;
