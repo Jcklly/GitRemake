@@ -652,6 +652,13 @@ void resolveIP() {
 	free(addr);
 }
 
+
+void checkout() {
+
+}
+
+
+
 	// 3.0 - Stores IP Address and Port into ./.configure file.
 void configure(char* port, char* addr) {
 	
@@ -718,14 +725,22 @@ int main(int argc, char* argv[]) {
 			exit(1);
 		} else {
 			if(strcmp(argv[1], "add") == 0) {
+				resolveIP();
 				add_or_remove(1, argv[2], argv[3]);
 			} else {
+				resolveIP();
 				add_or_remove(2, argv[2], argv[3]);
 			}
 		}
 
-	} else {
-		;
+	} else if(strcmp(argv[1], "checkout") == 0) {
+		if(argc != 3) {
+			fprintf(stderr, "Invalid number of arguments for CREATE.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			create(argv[2]);
+		}
 	}
 
 
