@@ -14,6 +14,8 @@
 #include <sys/select.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#include <openssl/sha.h>
+#include "helper.h"
 
 	// Returns either IP Address or port from ./.configure file
 	// 1 = get port
@@ -244,6 +246,156 @@ void destroy(char* projName) {
 
 }
 
+	// Rebuilds the .Manifest for a given project using the array of structs of parsed .Manifest info
+int rebuildManifest(files* f, char* path, int lines) {
+
+
+	int i, totalBytes;
+	i = totalBytes = 0;
+
+		// Get totalBytes to create buffer that will contain new .Manifest
+	while(i < lines) {
+	
+		totalBytes += (strlen(f[i].file_name) + strlen(f[i].file_hash) + 10);
+		++i;
+	}
+
+	
+	i = 0;
+	char buffer[totalBytes];
+	char vn[5];
+	bzero(buffer, totalBytes);
+	
+	while(i < lines) {
+		if(f[i].version_number == 0) {
+			++i;
+			continue;
+		}
+		sprintf(vn, "%d", f[i].version_number);
+		if(strcmp(f[i].file_name, ".Manifest") == 0) {
+			strcpy(buffer, vn);
+			strcat(buffer, "\n");
+			bzero(vn, 5);
+			
+		} else {
+			strcat(buffer, vn);
+			strcat(buffer, " ");
+			strcat(buffer, f[i].file_name);
+			strcat(buffer, " ");
+			strcat(buffer, f[i].file_hash);
+			strcat(buffer, "\n");
+			bzero(vn, 5);
+		}
+		++i;
+	}
+
+		// Removes old .Manifest
+	int rmv = remove(path);
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing file: %s\n", path);
+		return 0;
+	}
+
+	int fd = open(path, O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		printf("Error opening file: %s\n", path);
+		exit(1);
+	}
+	write(fd, buffer, strlen(buffer));
+	close(fd);
+	
+}
+
+	// Parses fileName, version #, and hash into array of structs. 
+void parseManifest(files* f, char* projName, char* fileName) {
+
+	char pathManifest[strlen(projName) + 11];
+	strcpy(pathManifest, projName);
+	strcat(pathManifest, "/.Manifest");
+
+
+
+	int fd = open(pathManifest, O_RDONLY);		
+	if(fd < 0) {
+		printf("Error opening file: %s\n", fileName);
+		exit(1);
+	}		
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	char buffer[(int)fileSize + 1];
+
+	int rfd = read(fd, buffer, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from file: %s", fileName);
+		exit(1);
+	}
+	close(fd);
+
+	int numElements, line, i;
+	i = numElements = line = 0;
+	
+//	printf("%s\n", buffer);
+
+	while(buffer[i] != '\n') {
+		++i;
+	}	
+
+		// Set first file to .Manifest in struct
+	
+	strcpy(f[line].file_name, ".Manifest");
+	strcpy(f[line].file_hash, "NULL");
+	char temp[i];
+	memcpy(temp, buffer, i);
+	f[line].version_number = atoi(temp);
+	++line;
+	++i;	
+
+	char newTemp[strlen(buffer)-i];
+	memcpy(newTemp, buffer+i, strlen(buffer)-i);
+//	printf("%s\n", newTemp);
+
+	i = 0;
+	while(i < strlen(newTemp)) {
+		if(newTemp[i] == ' ') {
+			++numElements;
+		}
+		if(newTemp[i] == '\n') {
+			++numElements;
+			newTemp[i] = ',';
+		}
+		++i;
+	}
+
+	char* tokenized[numElements];
+	i = 0;
+	tokenized[i] = strtok(newTemp, " ,");
+	
+	while(tokenized[i] != NULL) {
+		tokenized[++i] = strtok(NULL, " ,");
+	}
+
+	i = 0;
+	while(i < numElements) {
+		if(i%3 == 0) {
+			++line;
+		}
+		if(i+1 > numElements || i+2 > numElements) {
+			break;
+		}
+		f[line-1].version_number = atoi(tokenized[i]);
+		strcpy(f[line-1].file_name, tokenized[i+1]);
+		strcpy(f[line-1].file_hash, tokenized[i+2]);
+		i += 3;
+	}
+
+
+}
+
+
+
 	// 3.8 && 3.9 -- Adds or Removes filename from .Manifest on client side
 	// flag represents whether we are 'adding' or 'removing'
 	// 1 -- add
@@ -299,17 +451,183 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 
 
 		// create buffer that will be added to manifest.
-		char toAdd[128];
-			
 		
+		int fd = open(fileName, O_RDONLY);		
+		if(fd < 0) {
+			printf("Error opening file: %s\n", fileName);
+			exit(1);
+		}		
+	
+		off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+		size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+		lseek(fd, cp, SEEK_SET);
 
 
+			// Generate hash for file.
+		char buffer[(int)fileSize];
+		bzero(buffer, (int)fileSize);
+		int rfd = read(fd, buffer, fileSize);
+		if(rfd < 0) {
+			fprintf(stderr, "Error readiing from file: %s", fileName);
+			exit(1);
+		}
+		close(fd);
+		unsigned char hash[SHA256_DIGEST_LENGTH];
+		bzero(hash, SHA256_DIGEST_LENGTH);
+		SHA256(buffer, strlen(buffer), hash);
+		
+			// Converts hash into string.
+		char hashString[65];
+		int k = 0;
+		while(k < SHA256_DIGEST_LENGTH) {
+			sprintf(&hashString[k*2], "%02x", hash[k]);
+			++k;
+		}
 
+	
+
+			// Combine everything to get string to add to .Manifest.
+		char toAdd[strlen(hashString) + strlen(fileName) + 5];
+		strcpy(toAdd, "1 ");
+		strcat(toAdd, fileName);
+		strcat(toAdd, " ");
+		strcat(toAdd, hashString);
+		strcat(toAdd, "\n");
+
+		char pathManifest[strlen(projName) + 11];
+		strcpy(pathManifest, projName);
+		strcat(pathManifest, "/.Manifest");
+
+		fd = open(pathManifest, O_APPEND | O_RDWR);
+		if(fd < 0) {
+			printf("Error opening file: %s\n", fileName);
+			exit(1);
+		}		
+
+		cp = lseek(fd, (size_t)0, SEEK_CUR);	
+		fileSize = lseek(fd, (size_t)0, SEEK_END); 
+		lseek(fd, cp, SEEK_SET);
+
+		char manifestBuf[(int)fileSize + 1];
+
+		rfd = read(fd, manifestBuf, (int)fileSize);
+		if(rfd < 0) {
+			fprintf(stderr, "Error readiing from file: %s", fileName);
+			exit(1);
+		}
+		
+			// Gets number of lines from .Manifest	
+		int i = 0;
+		int numLines = 0;
+		while(i < (int)fileSize) {
+			if(manifestBuf[i] == '\n') {
+				++numLines;
+			}
+			++i;
+		}	
+			// parse .Manifest into array of structs.
+		files *f = malloc(numLines*sizeof(*f));
+		parseManifest(f, projName, fileName);
+
+		int mCheck = 0;
+		i = 0;
+		while(i < numLines) {
+			if(strcmp(f[i].file_name, fileName) == 0) {
+				printf("Warning: File already exists in `.Manifest`.\nHash has been updated.\n");
+				bzero(f[i].file_hash, strlen(f[i].file_hash));
+				strcpy(f[i].file_hash, hashString);
+				mCheck = 1;
+				break;
+			}
+			++i;
+		}	
+			// Hash value got updated.
+			// Need to remake .Manifest based on array of structs.
+		if(mCheck == 1) {
+			rebuildManifest(f, pathManifest, numLines);
+		} else {
+			write(fd, toAdd, strlen(toAdd));
+			printf("Successfully added file.\n");
+		}
+
+		free(f);
+		close(fd);
 
 	} else {
+		// Remove
 		
-	}
+			// Check if file exists on client.		
+		int existCheck = access(fileName, F_OK);
+		
+			// File doesn't exists on client.
+		if(existCheck < 0) {
+			fprintf(stderr, "File does not exists on client.\n");
+			exit(1);
+		}
+
+		
+		char pathManifest[strlen(projName) + 11];
+		strcpy(pathManifest, projName);
+		strcat(pathManifest, "/.Manifest");
+
+		int fd = open(pathManifest, O_RDONLY);
+		if(fd < 0) {
+			printf("Error opening file: %s\n", fileName);
+			exit(1);
+		}		
+
+		off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+		size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+		lseek(fd, cp, SEEK_SET);
 	
+		char manifestBuf[(int)fileSize + 1];
+
+		int rfd = read(fd, manifestBuf, (int)fileSize);
+		if(rfd < 0) {
+			fprintf(stderr, "Error readiing from file: %s", fileName);
+			exit(1);
+		}
+		
+			// Gets number of lines from .Manifest	
+		int i = 0;
+		int numLines = 0;
+		while(i < (int)fileSize) {
+			if(manifestBuf[i] == '\n') {
+				++numLines;
+			}
+			++i;
+		}	
+
+
+		
+			// Parse .Manifest into array of structs.
+		files *f = malloc(numLines*sizeof(*f));
+		parseManifest(f, projName, fileName);
+		
+		i = 0;
+		while(i < numLines) {
+			
+			if(strcmp(fileName, f[i].file_name) == 0) {
+					// This gets checked for when rebuilding the .Manifest.
+					// If version number is 0, that means the entry should be deleted.
+				f[i].version_number = 0;
+				break;
+			}
+		
+			++i;
+		}
+
+
+		rebuildManifest(f, pathManifest, numLines);
+		printf("Successfully removed file.\n");
+
+
+		free(f);
+		close(fd);
+	
+	}
+
+
 
 	
 }
