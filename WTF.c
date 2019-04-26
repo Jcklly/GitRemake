@@ -250,7 +250,10 @@ void destroy(char* projName) {
 	// 2 -- remove
 void add_or_remove(int flag, char* projName, char* fileName) {
 
-	// Check if project exists on the client side.
+		// Will get set to 1 if it finds the projName
+	int check = 0;
+
+		// Check if project exists on the client side.
 	DIR *d = opendir(".");		
 	struct dirent *status = NULL;
 
@@ -265,8 +268,7 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 				} else {
 						// Project already exists...
 					if(strcmp(status->d_name, projName) == 0) {
-						fprintf(stderr, "Project: '%s' already exists on server.\n", projName);
-						return;
+						check = 1;
 					}
 				}
 			}
@@ -275,6 +277,41 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 		closedir(d);
 	}
 
+
+		// projName never found in directory
+	if(check == 0) {
+		fprintf(stderr, "Project: `%s` not found on client. Please create the directory before adding files into it.\n", projName);
+		exit(1);
+	}
+
+
+		// 1 -- add
+		// else -- remove
+	if(flag == 1) {
+		
+		int existCheck = access(fileName, F_OK);
+		
+			// File doesn't exists on client.
+		if(existCheck < 0) {
+			fprintf(stderr, "File does not exists on client.\n");
+			exit(1);
+		}
+
+
+		// create buffer that will be added to manifest.
+		char toAdd[128];
+			
+		
+
+
+
+
+	} else {
+		
+	}
+	
+
+	
 }
 
 
