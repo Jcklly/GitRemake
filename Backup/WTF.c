@@ -155,6 +155,9 @@ void create(char* projName) {
 	
 	if(recLength == 0) {
 		printf("Project name: `%s` already exists on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
 		return;
 	}
 	
@@ -652,6 +655,157 @@ void resolveIP() {
 	free(addr);
 }
 
+	// 3.1 -- Checkout
+	// Obtain copy of project from server.
+void checkout(char* projName) {
+
+		// Check if project exists on the client side.
+	DIR *d = opendir(".");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						fprintf(stderr, "Project already exists on client.\n");
+						exit(1);
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// If here, then passed all existence check on client side.
+	int sockfd = -1;
+	int newsockfd = -1;
+	int addrInfo = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error creating server socket.\n");
+		exit(1);
+	}
+
+
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// create:<strlen(projName):projName>
+
+	int n, i, recLength;
+	n = i = recLength = 0;
+	
+	char sendBuf[13 + strlen(projName)];
+	bzero(sendBuf, 13 + strlen(projName));
+	
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "checkout:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+	
+        fd_set set;
+        struct timeval timeout;
+
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+        select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+        i = ioctl(sockfd, FIONREAD, &recLength);
+
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+                exit(1);
+        }
+
+        char recBuf[recLength+1];
+        bzero(recBuf, recLength+1);
+
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+	
+	if(recLength == 0) {
+		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	printf("Received project: `%s` from server.\n", projName);
+
+	int fd = open("archive.tar.gz", O_CREAT | O_RDWR, 0644);
+	write(fd, recBuf, recLength);
+	close(fd);
+
+		// untar project into current directory
+	char command[50];
+	strcpy(command, "tar --strip-components=1 -zxf archive.tar.gz");
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error untar-ing project received from server.\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	
+		// Remove old tar file
+	int rmv = remove("./archive.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+	free(ipAddress);
+	free(portS);
+	close(sockfd);
+}
+
+
+
 	// 3.0 - Stores IP Address and Port into ./.configure file.
 void configure(char* port, char* addr) {
 	
@@ -724,8 +878,15 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-	} else {
-		;
+	} else if(strcmp(argv[1], "checkout") == 0) {
+
+		if(argc != 3) {
+			fprintf(stderr, "Invalid number of arguments for CREATE.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			checkout(argv[2]);
+		}
 	}
 
 

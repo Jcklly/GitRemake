@@ -34,10 +34,13 @@ int getCommand(char* buf) {
 	command[i] = '\0';
 
 	if(strcmp(command, "create") == 0) {
+		printf("Received CREATE command from client.\n");
 		return 1;
 	} else if(strcmp(command, "destroy") == 0) {
+		printf("Received DESTROY command from client.\n");
 		return 2;
 	} else if(strcmp(command, "checkout") == 0) {
+		printf("Received CHECKOUT command from client.\n");
 		return 3;
 	} else {
 		;
@@ -75,7 +78,7 @@ char* getProjectName(char* buf) {
 	// 3.6 -- create
 int create(char* projName, int sockfd) {
 
-	// Check if projName already exits.
+		// Check if projName already exits.
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
 
@@ -91,7 +94,7 @@ int create(char* projName, int sockfd) {
 						// Project already exists...
 					if(strcmp(status->d_name, projName) == 0) {
 						fprintf(stderr, "Project: '%s' already exists on server.\n", projName);
-						return 0;
+						return 1;
 					}
 				}
 			}
@@ -114,7 +117,7 @@ int create(char* projName, int sockfd) {
 
         if(fd < 0) {
                 fprintf(stderr, "Configure never ran. Please run:\n./WTF configure <IP> <PORT>\n");
-                exit(1);
+                return 1;
         }
 
 	write(fd, "1", 1);
@@ -187,6 +190,80 @@ void destroy(char* projName, int sockfd) {
 
 int checkout(char* projName, int sockfd) {
 
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
+
+
+	char command[strlen(projName) + 41];
+	strcpy(command, "tar -czf .server/archive.tar.gz .server/");
+	strcat(command, projName);
+
+		// Tar project and send it over.
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error compressing project: %s\n", projName);
+		return 1;
+	}
+
+	int fd = open(".server/archive.tar.gz", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening: .server/archive.tar.gz\n");
+		return 1;
+	}
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	unsigned char buffer[(int)fileSize + 1];
+
+	int rd = read(fd, buffer, (int)fileSize);
+	if(rd < 0) {
+		fprintf(stderr, "Error reading from: .server/archive.tar.gz\n");	
+		return 1;
+	}
+	close(fd);
+
+		// Send compressed project back to client.
+	write(sockfd, buffer, (int)fileSize);
+	printf("Sent compressed project to client.\n");
+
+		// Remove tar file from server.
+	int rmv = remove(".server/archive.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
+		return 1;
+	}
 }
 
 
