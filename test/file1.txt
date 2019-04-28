@@ -1,4 +1,5 @@
 This is a test file in project: test
 there are
-4 lines
+5 lines
 in this file!
+lolol

@@ -54,7 +54,7 @@ char* getConfig(int flag) {
 	}
 
 	if(i == 0) {
-		fprintf(stderr, "Error in function `getCOnfig()`\n");
+		fprintf(stderr, "Error in function `getConfig()`\n");
 		exit(1);
 	}
 	
@@ -329,6 +329,7 @@ void parseManifest(files* f, char* projName, char* fileName) {
 	lseek(fd, cp, SEEK_SET);
 
 	char buffer[(int)fileSize + 1];
+	bzero(buffer, (int)fileSize+1);
 
 	int rfd = read(fd, buffer, (int)fileSize);
 	if(rfd < 0) {
@@ -336,6 +337,8 @@ void parseManifest(files* f, char* projName, char* fileName) {
 		exit(1);
 	}
 	close(fd);
+
+	buffer[(int)fileSize] = '\0';
 
 	int numElements, line, i;
 	i = numElements = line = 0;
@@ -356,8 +359,11 @@ void parseManifest(files* f, char* projName, char* fileName) {
 	++line;
 	++i;	
 
-	char newTemp[strlen(buffer)-i];
+	char newTemp[strlen(buffer)-i + 1];
+	bzero(newTemp, strlen(buffer)-i+1);
 	memcpy(newTemp, buffer+i, strlen(buffer)-i);
+	newTemp[strlen(buffer)-i] = '\0';
+
 //	printf("%s\n", newTemp);
 
 	i = 0;
@@ -371,7 +377,7 @@ void parseManifest(files* f, char* projName, char* fileName) {
 		}
 		++i;
 	}
-
+	
 	char* tokenized[numElements];
 	i = 0;
 	tokenized[i] = strtok(newTemp, " ,");
@@ -380,6 +386,12 @@ void parseManifest(files* f, char* projName, char* fileName) {
 		tokenized[++i] = strtok(NULL, " ,");
 	}
 
+/*	i = 0;
+	while(i < numElements) {
+		printf("%s\n", tokenized[i]);
+		++i;
+	}
+*/
 	i = 0;
 	while(i < numElements) {
 		if(i%3 == 0) {
@@ -392,8 +404,8 @@ void parseManifest(files* f, char* projName, char* fileName) {
 		strcpy(f[line-1].file_name, tokenized[i+1]);
 		strcpy(f[line-1].file_hash, tokenized[i+2]);
 		i += 3;
+//		printf("%s : %d\n", f[line-1].file_name, line-1);
 	}
-
 
 }
 
@@ -776,6 +788,14 @@ void checkout(char* projName) {
 	printf("Received project: `%s` from server.\n", projName);
 
 	int fd = open("archive.tar.gz", O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		fprintf(stderr, "Error creating archive.tar.gz in client\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+		
+	}
 	write(fd, recBuf, recLength);
 	close(fd);
 
@@ -899,7 +919,7 @@ void currentVersion(char* projName) {
 	}
 	
 	printf("Received current versions of files from project: `%s` from the server.\nFILE NAME : VERSION NUMBER\n", projName);
-	printf("%s\n", recBuf);
+	fprintf(stdout, "%s\n", recBuf);
 
 
 	close(sockfd);
@@ -934,6 +954,449 @@ void configure(char* port, char* addr) {
 	
 }
 
+	// 3.2 - Update
+void update(char* projName) {
+
+		// connect to server
+	int sockfd = -1;
+	int newsockfd = -1;
+	int addrInfo = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error creating server socket.\n");
+		exit(1);
+	}
+
+
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// update:  :<projName>
+	int n, i, recLength;
+	n = i = recLength = 0;
+	
+	char sendBuf[11 + strlen(projName)];
+	bzero(sendBuf, 11 + strlen(projName));
+	
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "update:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+	
+        fd_set set;
+        struct timeval timeout;
+
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+        select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+        i = ioctl(sockfd, FIONREAD, &recLength);
+
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+                exit(1);
+        }
+
+        char recBuf[recLength+1];
+        bzero(recBuf, recLength+1);
+
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+	
+	if(recLength == 0) {
+		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+	printf("Received .Manifest from the server. Proceeding to evaluate changes...\n");
+	
+	int fd = open("archive.tar.gz", O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		fprintf(stderr, "Error creating archive.tar.gz in client\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+		
+	}
+	write(fd, recBuf, recLength);
+	close(fd);
+
+		// untar project into current directory
+	char command[50];
+	strcpy(command, "tar --strip-components=2 -zxf archive.tar.gz");
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error untar-ing project received from server.\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	
+		// Remove old tar file
+	int rmv = remove("./archive.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+
+	// Now we have the server's version of the project's .Manifest.
+	// Need to compare it with our own project's .Manifest.
+	
+		// Number of lines in server's .Manifest
+	fd = open(".Manifest", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening .Manifest\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}		
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	char server_manifest[(int)fileSize + 1];
+
+	int rfd = read(fd, server_manifest, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from .Manifest\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	close(fd);
+	server_manifest[(int)fileSize] = '\0';
+	
+	i = 0;
+	int numLines_s = 0;
+	while(i < (int)fileSize) {
+		if(server_manifest[i] == '\n') {
+			++numLines_s;
+		}
+		++i;
+	}	
+	
+
+		// Now get the number of lines from the client's .Manifest
+	char manifest_c[strlen(projName) + 11];
+	strcpy(manifest_c, projName);
+	strcat(manifest_c, "/.Manifest");
+
+	fd = open(manifest_c, O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening clients .Manifest in project: %s\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}		
+	
+	fileSize = 0;
+	cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	char client_manifest[(int)fileSize + 1];
+
+	rfd = read(fd, client_manifest, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from clients .Manifest in project: %s\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	close(fd);
+	client_manifest[(int)fileSize] = '\0';	
+
+	i = 0;
+	int numLines_c = 0;
+	while(i < (int)fileSize) {
+		if(client_manifest[i] == '\n') {
+			++numLines_c;
+		}
+		++i;
+	}	
+
+		// Parse manifest from server and client into structs to compare.
+	files *s = malloc(numLines_s * sizeof(*s));
+	files *c = malloc(numLines_c * sizeof(*c));	
+	files *lc = malloc(numLines_c * sizeof(*c));
+
+	parseManifest(s, ".", "Server's .Manifest");
+	parseManifest(c, projName, "Client's .Manifest");
+
+		// Check UMAD cases
+	int k, UMAD;
+	i = k = 1;
+	UMAD = 0;
+
+	char updateBuf[strlen(projName) + 9];
+	bzero(updateBuf, (strlen(projName) + 9));
+	strcpy(updateBuf, projName);
+	strcat(updateBuf, "/.Update");
+	
+	rmv = remove(updateBuf);
+
+	fd = open(updateBuf, O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening file: `%s`.\nThis file is in the client's .Manifest but not in the project.\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+	}
+	close(fd);
+
+
+	while(i < numLines_c) {
+		k = 1;
+		while(k < numLines_s) {
+			
+			if(strcmp(c[i].file_name, s[k].file_name) == 0) {
+				
+					// Get live hash from file on client.
+				fd = open(c[i].file_name, O_RDONLY);
+				if(fd < 0) {
+					fprintf(stderr, "Error opening file: `%s`.\nThis file is in the client's .Manifest but not in the project.\n");
+					close(sockfd);
+					free(ipAddress);
+					free(portS);
+				}
+
+				cp = lseek(fd, (size_t)0, SEEK_CUR);	
+				fileSize = lseek(fd, (size_t)0, SEEK_END); 
+				lseek(fd, cp, SEEK_SET);
+
+					// Generate hash for file.
+				char buffer[(int)fileSize+1];
+				bzero(buffer, (int)fileSize+1);
+				int rfd = read(fd, buffer, fileSize);
+				if(rfd < 0) {
+					fprintf(stderr, "Error readiing from file: %s", c[i].file_name);
+					close(sockfd);
+					free(ipAddress);
+					free(portS);
+					exit(1);
+				}
+				close(fd);
+				buffer[(int)fileSize] = '\0';
+
+					// Generate live hash
+				unsigned char hash[SHA256_DIGEST_LENGTH];
+				bzero(hash, SHA256_DIGEST_LENGTH);
+				SHA256(buffer, strlen(buffer), hash);
+				
+					// Converts hash into string.
+				char hashString[65];
+				bzero(hashString, 65);
+				hashString[64] = '\0';
+				int p = 0;
+				while(p < SHA256_DIGEST_LENGTH) {
+					sprintf(&hashString[p*2], "%02x", hash[p]);
+					++p;
+				}
+
+
+					// Checks UPLOAD
+					// Checks live hash against server's hash and same version .Manifest
+				if( (strcmp(s[k].file_hash, hashString) != 0) && c[0].version_number == s[0].version_number) {
+					fprintf(stdout, "U %s\n", c[i].file_name);
+					UMAD = 1;
+				}
+
+					// Checks MODIFY
+				if(strcmp(hashString, c[i].file_hash) == 0) {
+					
+					if( (s[0].version_number != c[0].version_number) && (c[i].version_number != s[k].version_number) ) {
+						fprintf(stdout, "M %s\n", c[i].file_name);
+						UMAD = 1;
+
+						fd = open(updateBuf, O_APPEND | O_RDWR);
+						char vn[5];
+						bzero(vn, 5);	
+						sprintf(vn, "%d", c[i].version_number);
+
+						char toAdd[strlen(c[i].file_name) + strlen(c[i].file_hash) + 12];
+						bzero(toAdd, strlen(c[i].file_name) + strlen(c[i].file_hash) + 12);	
+						
+						strcpy(toAdd, "M ");
+						strcat(toAdd, vn);
+						strcat(toAdd, " ");
+						strcat(toAdd, c[i].file_name);
+						strcat(toAdd, " ");
+						strcat(toAdd, c[i].file_hash);
+						strcat(toAdd, "\n");
+				
+						write(fd, toAdd, strlen(toAdd));
+
+						close(fd);
+					}					
+
+				}
+
+					// Checks for BAD error
+				if( (s[0].version_number != c[0].version_number) && (c[i].version_number != s[k].version_number) && (strcmp(hashString, c[i].file_hash) != 0) ) {
+					fprintf(stdout, "Conflict found: %s\n", c[i].file_name);
+					UMAD = -1;
+				}
+					
+				break;
+			}
+				
+				// Checks UPLOAD
+				// File is in client's .Manifest but not in server && version numbers are the same
+			if((strcmp(c[i].file_name, s[k].file_name) != 0) && (k == numLines_s-1) && (c[0].version_number == s[0].version_number)) {
+				fprintf(stdout, "U %s\n", c[i].file_name);
+				UMAD = 1;
+			}
+
+				// Checks DELETE
+			if( (strcmp(c[i].file_name, s[k].file_name) != 0) && (k == numLines_s-1) && (s[0].version_number != c[0].version_number) ) {
+				fprintf(stdout, "D %s\n", c[i].file_name);
+				UMAD = 1;
+
+				fd = open(updateBuf, O_APPEND | O_RDWR);
+				char vn[5];
+				bzero(vn, 5);	
+				sprintf(vn, "%d", c[i].version_number);
+
+				char toAdd[strlen(c[i].file_name) + strlen(c[i].file_hash) + 12];
+				bzero(toAdd, strlen(c[i].file_name) + strlen(c[i].file_hash) + 12);	
+				
+				strcpy(toAdd, "D ");
+				strcat(toAdd, vn);
+				strcat(toAdd, " ");
+				strcat(toAdd, c[i].file_name);
+				strcat(toAdd, " ");
+				strcat(toAdd, c[i].file_hash);
+				strcat(toAdd, "\n");
+		
+				write(fd, toAdd, strlen(toAdd));
+
+				close(fd);
+			}
+			++k;
+		}	
+		++i;
+	}
+
+
+	i = k = 1;
+	while(k < numLines_s) {
+		i = 1;
+		while(i < numLines_c) {
+		
+			if(strcmp(s[k].file_name, c[i].file_name) == 0) {
+				break;
+			}
+			
+			if( (strcmp(s[k].file_name, c[i].file_name) != 0) && (i == numLines_c-1) && (s[0].version_number != c[0].version_number) ) {
+				fprintf(stdout, "A %s\n", s[k].file_name);
+				UMAD = 1;
+	
+				fd = open(updateBuf, O_APPEND | O_RDWR);
+				char vn[5];
+				bzero(vn, 5);	
+				sprintf(vn, "%d", c[i].version_number);
+
+				char toAdd[strlen(c[i].file_name) + strlen(c[i].file_hash) + 12];
+				bzero(toAdd, strlen(c[i].file_name) + strlen(c[i].file_hash) + 12);	
+				
+				strcpy(toAdd, "A ");
+				strcat(toAdd, vn);
+				strcat(toAdd, " ");
+				strcat(toAdd, c[i].file_name);
+				strcat(toAdd, " ");
+				strcat(toAdd, c[i].file_hash);
+				strcat(toAdd, "\n");
+		
+				write(fd, toAdd, strlen(toAdd));
+
+				close(fd);
+			}
+
+			++i;
+		}
+		++k;
+	}
+
+
+	if(UMAD == -1) {
+		printf("Conflicts were found while updating. Please refer to the files preceding with `Conflict: <file>` and resolve the issues.\n");
+
+			// Remove .Update if found		
+		rmv = remove(updateBuf);
+
+		free(s);
+		free(c);
+		free(lc);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	
+	if(UMAD == 0) {
+		fprintf(stdout, "Up to date\n");
+	} 
+
+		// remove .Manifest
+	rmv = remove(".Manifest");
+	
+	free(s);
+	free(c);
+	free(lc);
+	close(sockfd);
+	free(ipAddress);
+	free(portS);
+
+}
 
 int main(int argc, char* argv[]) {
 
@@ -998,6 +1461,17 @@ int main(int argc, char* argv[]) {
 			resolveIP();
 			currentVersion(argv[2]);
 		}
+	} else if(strcmp(argv[1], "update") == 0) {
+
+		if(argc != 3) {
+
+			fprintf(stderr, "Invalid number of arguments for UPDATE.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			update(argv[2]);
+		}
+
 	}
 
 
