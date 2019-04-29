@@ -22,6 +22,7 @@
 	// 3 - checkout
 	// 4 - currentversion
 	// 5 - update
+	// 6 - upgrade
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -51,6 +52,9 @@ int getCommand(char* buf) {
 	} else if(strcmp(command, "update") == 0) {
 		printf("Received UPDATE command from client.\n");
 		return 5;
+	} else if(strcmp(command, "upgrade") == 0) {
+		printf("Received UPGRADE command from client.\n");
+		return 6;
 	} else {
 		;
 	}
@@ -572,6 +576,7 @@ int update(char* projName, int sockfd) {
 
 
 	char command[strlen(projName) + 52];
+	bzero(command, (strlen(projName) + 52));
 	strcpy(command, "tar -czf .server/archive.tar.gz .server/");
 	strcat(command, projName);
 	strcat(command, "/.Manifest");
@@ -604,7 +609,7 @@ int update(char* projName, int sockfd) {
 
 		// Send compressed project back to client.
 	write(sockfd, buffer, (int)fileSize);
-	printf("Sent compressed .Manifest to client.\n");
+	printf("Sent compressed .Manifest to client for evaluation.\n");
 
 		// Remove tar file from server.
 	int rmv = remove(".server/archive.tar.gz");
@@ -614,6 +619,170 @@ int update(char* projName, int sockfd) {
 	}
 
 	return 0;	
+}
+
+
+int upgrade(char* projName, int sockfd) {
+
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
+
+	int n = 0;
+	fd_set set;
+	struct timeval timeout;
+
+	FD_ZERO(&set);
+	FD_SET(sockfd, &set);
+
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+	//ensures something is bring read from client
+	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+	//n is length of buffer
+	int i = ioctl(sockfd, FIONREAD, &n);
+	
+	if(i < 0) {
+		fprintf(stderr, "Error with ioctl().\n");
+		exit(1);
+	}
+	
+	char *buffer = malloc((n+1)*sizeof(char)); //[n+1];
+	bzero(buffer, n+1);
+
+	if(n > 0) {
+		n = read(sockfd, buffer, n);
+	}
+	
+	// tar -czf .server/archive1.tar.gz .server/projName/1 ./server/projName/2 
+		// Take given file names from the client and reformat into names used for tar.
+	int numLines = 0;
+	i = 0;
+	while(i < strlen(buffer)) {
+		if(buffer[i] == ' ') {
+			++numLines;
+		}
+		++i;
+	}
+
+	char tarBuf[numLines*(11 + strlen(projName))];
+	bzero(tarBuf, (numLines*(11 + strlen(projName))));
+	
+		//.server/ / 
+	char prefix[9];
+	bzero(prefix, 9);
+	
+	strcpy(prefix, ".server/");
+	
+//	printf("%s\n", buffer);
+
+	i = 0;
+	int k = 0;
+	while(i < strlen(buffer)) {
+		k = i;
+		while((k < strlen(buffer)) && (buffer[k] != ' ')) {
+			++k;
+		}
+
+		int length = k - i;
+		char temp[length + 1];
+		bzero(temp, (length+1));
+		
+		memcpy(temp, buffer+i, length);
+		temp[length] = '\0';
+
+		strcat(tarBuf, prefix);
+		strcat(tarBuf, temp);
+		strcat(tarBuf, " ");
+
+
+//		printf("%s\n", buffer);		
+		i = k;
+		++i;
+	}
+	
+//	printf("%s\n", tarBuf);
+
+		// contains .Update files...do stuff with M, A
+	char command[strlen(tarBuf) + 34];
+	bzero(command, (strlen(tarBuf) + 34));
+
+	strcpy(command, "tar -czf .server/archive1.tar.gz ");
+	strcat(command, tarBuf);
+
+
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error compressing archive. Most likely a file that is suppose to be tar'd does not exists.\n");
+		free(buffer);
+		return 1;
+	}
+
+	int fd = open(".server/archive1.tar.gz", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening: .server/archive1.tar.gz\n");
+		free(buffer);
+		return 1;
+	}
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	unsigned char sendBuf[(int)fileSize + 1];
+
+	int rd = read(fd, sendBuf, (int)fileSize);
+	if(rd < 0) {
+		fprintf(stderr, "Error reading from: .server/archive1.tar.gz\n");	
+		free(buffer);
+		return 1;
+	}
+	close(fd);
+	sendBuf[(int)fileSize] = '\0';
+
+		// Send compressed project back to client.
+	write(sockfd, sendBuf, (int)fileSize);
+	printf("Sent compressed files to client.\n");
+
+		// Remove tar file from server.
+	int rmv = remove(".server/archive1.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive1.tar.gz\n");
+		free(buffer);
+		return 1;
+	}
+
+	free(buffer);
+	return 0;
 }
 
 
@@ -707,7 +876,7 @@ int main(int argc, char** argv) {
 	if(n > 0) {
 		n = read(newsockfd, buffer, n);
 	}
-
+	
 
 		// Get the command given from client. (Create, history, rollback, etc...)
 		// 1 - create
@@ -715,6 +884,7 @@ int main(int argc, char** argv) {
 		// 3 - checkout
 		// 4 - currentversion
 		// 5 - update
+		// 6 - upgrade
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -737,6 +907,10 @@ int main(int argc, char** argv) {
 	} else if(command == 5) {
 		char* projectName = getProjectName(buffer);
 		update(projectName, newsockfd);
+		free(projectName);
+	} else if(command = 6) {
+		char* projectName = getProjectName(buffer);
+		upgrade(projectName, newsockfd);
 		free(projectName);
 	} else {
 		;

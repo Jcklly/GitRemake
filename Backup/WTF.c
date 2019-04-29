@@ -410,6 +410,95 @@ void parseManifest(files* f, char* projName, char* fileName) {
 }
 
 
+	// Parses the .Update file into uFiles struct
+	// return values:
+	// -1 - .Update is empty
+	// -2 - error reading/opening
+	// anything else - good
+int parseUpdate(uFiles *f, char* projName) {
+
+	char pathUpdate[strlen(projName) + 9];
+	strcpy(pathUpdate, projName);
+	strcat(pathUpdate, "/.Update");
+
+	int fd = open(pathUpdate, O_RDONLY);		
+	if(fd < 0) {
+		printf("Error opening .Update within project: `%s`\n", projName);
+		return;
+	}		
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	if((int)fileSize == 0) {
+		fprintf(stdout, "Project is up to date\n");
+		close(fd);
+		return -1;
+	}
+	
+
+	char buffer[(int)fileSize + 1];
+	bzero(buffer, (int)fileSize+1);
+
+	int rfd = read(fd, buffer, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error reading from .Update within project: `%s`", projName);
+		close(fd);
+		return -2;
+	}
+	close(fd);
+	buffer[(int)fileSize] = '\0';
+
+	int numElements, line, i;
+	i = numElements = line = 0;
+	
+	while(i < strlen(buffer)) {
+		if(buffer[i] == ' ') {
+			++numElements;
+		}
+		if(buffer[i] == '\n') {
+			++numElements;
+			buffer[i] = ',';
+		}
+		++i;
+	}
+	
+	char* tokenized[numElements];
+	i = 0;
+	tokenized[i] = strtok(buffer, " ,");
+	
+	while(tokenized[i] != NULL) {
+		tokenized[++i] = strtok(NULL, " ,");
+	}
+
+	i = 0;
+/*	while(i < numElements) {
+		printf("%s\n", tokenized[i]);
+		++i;
+	}
+*/
+	i = 0;
+	while(i < numElements) {
+		if(i%4 == 0) {
+			++line;
+		}
+		if(i+1 > numElements || i+2 > numElements || i+3 > numElements) {
+			break;
+		}
+		strcpy(f[line-1].code, tokenized[i]);
+		f[line-1].version_number = atoi(tokenized[i+1]);
+		strcpy(f[line-1].file_name, tokenized[i+2]);
+		strcpy(f[line-1].file_hash, tokenized[i+3]);
+		i += 4;
+//		printf("%s : %d : %s : %s\n", f[line-1].code, f[line-1].version_number, f[line-1].file_name, f[line-1].file_hash);
+
+	}
+
+	return 0;
+
+}
+
 
 	// 3.8 && 3.9 -- Adds or Removes filename from .Manifest on client side
 	// flag represents whether we are 'adding' or 'removing'
@@ -1193,7 +1282,7 @@ void update(char* projName) {
 	}
 	close(fd);
 
-
+		// Handles U M D
 	while(i < numLines_c) {
 		k = 1;
 		while(k < numLines_s) {
@@ -1279,6 +1368,34 @@ void update(char* projName) {
 					}					
 
 				}
+					// Checks MODIFY
+				if(strcmp(hashString, c[i].file_hash) != 0) {
+					
+					if((s[0].version_number != c[0].version_number) && (c[i].version_number == s[k].version_number) && (strcmp(hashString, c[i].file_hash) != 0)) {
+						fprintf(stdout, "M %s\n", c[i].file_name);
+						UMAD = 1;
+
+						fd = open(updateBuf, O_APPEND | O_RDWR);
+						char vn[5];
+						bzero(vn, 5);	
+						sprintf(vn, "%d", c[i].version_number);
+
+						char toAdd[strlen(c[i].file_name) + strlen(c[i].file_hash) + 12];
+						bzero(toAdd, strlen(c[i].file_name) + strlen(c[i].file_hash) + 12);	
+						
+						strcpy(toAdd, "M ");
+						strcat(toAdd, vn);
+						strcat(toAdd, " ");
+						strcat(toAdd, c[i].file_name);
+						strcat(toAdd, " ");
+						strcat(toAdd, c[i].file_hash);
+						strcat(toAdd, "\n");
+				
+						write(fd, toAdd, strlen(toAdd));
+
+						close(fd);
+					}
+				}
 
 					// Checks for BAD error
 				if( (s[0].version_number != c[0].version_number) && (c[i].version_number != s[k].version_number) && (strcmp(hashString, c[i].file_hash) != 0) ) {
@@ -1326,12 +1443,15 @@ void update(char* projName) {
 		++i;
 	}
 
-
+		// Handles A
 	i = k = 1;
 	while(k < numLines_s) {
 		i = 1;
 		while(i < numLines_c) {
 		
+//			printf("%s : %s\n", s[k].file_name, c[i].file_name);
+
+
 			if(strcmp(s[k].file_name, c[i].file_name) == 0) {
 				break;
 			}
@@ -1343,17 +1463,17 @@ void update(char* projName) {
 				fd = open(updateBuf, O_APPEND | O_RDWR);
 				char vn[5];
 				bzero(vn, 5);	
-				sprintf(vn, "%d", c[i].version_number);
+				sprintf(vn, "%d", s[k].version_number);
 
-				char toAdd[strlen(c[i].file_name) + strlen(c[i].file_hash) + 12];
-				bzero(toAdd, strlen(c[i].file_name) + strlen(c[i].file_hash) + 12);	
+				char toAdd[strlen(s[k].file_name) + strlen(s[k].file_hash) + 12];
+				bzero(toAdd, strlen(s[k].file_name) + strlen(s[k].file_hash) + 12);	
 				
 				strcpy(toAdd, "A ");
 				strcat(toAdd, vn);
 				strcat(toAdd, " ");
-				strcat(toAdd, c[i].file_name);
+				strcat(toAdd, s[k].file_name);
 				strcat(toAdd, " ");
-				strcat(toAdd, c[i].file_hash);
+				strcat(toAdd, s[k].file_hash);
 				strcat(toAdd, "\n");
 		
 				write(fd, toAdd, strlen(toAdd));
@@ -1395,7 +1515,340 @@ void update(char* projName) {
 	close(sockfd);
 	free(ipAddress);
 	free(portS);
+}
 
+	// 3.3 - upgrade
+void upgrade(char* projName) {
+
+		// Test is .Update exists. If not, tell client to run ./WTF update
+	char updateFile[strlen(projName) + 9];
+	bzero(updateFile, (strlen(projName) + 9));
+	strcpy(updateFile, projName);
+	strcat(updateFile, "/.Update");
+
+	if(access(updateFile, F_OK) < 0) {
+		fprintf(stderr, "Error, .Update not found in project: `%s`\nPlease run `./WTF update %s` before upgrading.\n", projName, projName);
+		exit(1);
+	}
+		
+		// Connect to server
+	int sockfd = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error creating server socket.\n");
+		exit(1);
+	}
+
+
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// update:  :<projName>
+	int n, i, recLength;
+	n = i = recLength = 0;
+	
+	char sendBuf[12 + strlen(projName)];
+	bzero(sendBuf, 12 + strlen(projName));
+	
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "upgrade:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+
+		// Open .Update and get number of lines
+	int fd = open(updateFile, O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening .Update in project: `%s`\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+	
+	char updateBuf[(int)fileSize + 1];
+	bzero(updateBuf, (int)fileSize + 1);
+
+	int rfd = read(fd, updateBuf, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from .Manifest\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		close(fd);
+		exit(1);
+	}
+	close(fd);
+	updateBuf[(int)fileSize] = '\0';
+	
+	i = 0;
+	int numLines = 0;
+	while(i < (int)fileSize) {
+		if(updateBuf[i] == '\n') {
+			++numLines;
+		}
+		++i;
+	}	
+
+	if(numLines == 0) {
+		fprintf(stdout, "%s is up to date!\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+		// Struct for holding parsed .Update file.
+	uFiles *f = malloc(numLines*sizeof(*f));
+	int rtn = parseUpdate(f, projName);
+	if(rtn == -2) {
+		fprintf(stderr, "Error opening .Update file.\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+		// Path for .Manifest on client side
+	char manifestPath[strlen(projName) + 11];
+	bzero(manifestPath, (strlen(projName) + 11));
+
+	strcpy(manifestPath, projName);
+	strcat(manifestPath, "/.Manifest");
+	fd = open(manifestPath, O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening .Manifest in project: `%s`\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		free(f);
+		exit(1);
+	}
+	
+	cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+	
+	char manifestBuf[(int)fileSize + 1];
+	bzero(manifestBuf, (int)fileSize + 1);
+
+	rfd = read(fd, manifestBuf, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from .Manifest\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		close(fd);	
+		free(f);
+		exit(1);
+	}
+	close(fd);
+	manifestBuf[(int)fileSize] = '\0';
+	
+	i = 0;
+	int numLinesM = 0;
+	while(i < (int)fileSize) {
+		if(manifestBuf[i] == '\n') {
+			++numLinesM;
+		}
+		++i;
+	}	
+	
+
+		// Struct for .Manifest
+	files *m = malloc(numLinesM*sizeof(*m));
+	parseManifest(m, projName, ".Manifest");
+
+
+		// Look through manifest and .Update, if D then delete from .Manifest.
+	int k = 0;
+	i = 0;
+	while(i < numLines) {
+		k = 0;
+		while(k < numLinesM) {
+			if((strcmp(m[k].file_name, f[i].file_name) == 0) && (strcmp(f[i].code, "D") == 0)) {
+				m[k].version_number = 0;
+			}
+			++k;
+		}
+		++i;
+	}		
+
+			// Rebuild the manifest.
+		rebuildManifest(m, manifestPath, numLinesM);
+
+	
+		// At this point, all DELETE's are finished.
+		// Now, send code for files we want from the server to retrieve them.
+	int size = 0;
+	i = 0;
+		// Get size needed for buffer to send to server
+	while(i < numLines) {
+		if((strcmp(f[i].code, "A") == 0) || (strcmp(f[i].code, "M") == 0)) {
+			size += (strlen(f[i].file_name) + 2);
+		}
+		++i;
+	}
+
+	char sendU[size + strlen(projName) + 12];
+	bzero(sendU, (size + strlen(projName) + 12));
+	sendU[0] = '\0';
+	i = 0;
+	while(i < numLines) {
+		if((strcmp(f[i].code, "A") == 0) || (strcmp(f[i].code, "M") == 0)) {
+			strcat(sendU, f[i].file_name);
+			strcat(sendU, " ");
+		}
+		++i;
+	}
+	strcat(sendU, projName);
+	strcat(sendU, "/.Manifest");
+	strcat(sendU, " ");
+
+        fd_set set;
+        struct timeval timeout;
+
+	recLength = 0;
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+		// Send .Update stuff		
+	write(sockfd, sendU, strlen(sendU));
+
+	recLength = 0;
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+	i = ioctl(sockfd, FIONREAD, &recLength);
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		free(f);
+		free(m);
+                exit(1);
+        }
+
+	char recBuf[recLength + 1];
+	bzero(recBuf, recLength + 1);
+
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+
+	if(recLength == 0) {
+		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		free(f);
+		free(m);
+		exit(1);
+	}
+
+	printf("Received compressed files from server...proceeding to decompress...\n");
+
+		// Contains tar of files
+	fd = open("archive1.tar.gz", O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		fprintf(stderr, "Error creating archive1.tar.gz in client\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		free(f);
+		free(m);
+		exit(1);
+		
+	}
+	write(fd, recBuf, recLength);
+	close(fd);
+
+		// untar project into current directory
+	char command[51];
+	bzero(command, 51);
+	strcpy(command, "tar --strip-components=1 -zxf archive1.tar.gz");
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error untar-ing project received from server.\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		free(f);
+		free(m);
+		exit(1);
+	}
+	
+		// Remove old tar file
+	int rmv = remove("./archive1.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		free(f);
+		free(m);
+		exit(1);
+	}
+
+		// Remove .Update file from project
+	rmv = remove(updateFile);
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing .Update file from project: `%s`\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		free(f);
+		free(m);
+		exit(1);
+	}
+
+
+	close(sockfd);
+	free(ipAddress);
+	free(portS);
+	free(f);
+	free(m);
 }
 
 int main(int argc, char* argv[]) {
@@ -1470,6 +1923,17 @@ int main(int argc, char* argv[]) {
 		} else {
 			resolveIP();
 			update(argv[2]);
+		}
+
+	} else if(strcmp(argv[1], "upgrade") == 0) {
+
+		if(argc != 3) {
+
+			fprintf(stderr, "Invalid number of arguments for UPGRADE.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			upgrade(argv[2]);
 		}
 
 	}
