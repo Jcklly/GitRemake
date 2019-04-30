@@ -23,6 +23,7 @@
 	// 4 - currentversion
 	// 5 - update
 	// 6 - upgrade
+	// 7 - commit
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -55,6 +56,9 @@ int getCommand(char* buf) {
 	} else if(strcmp(command, "upgrade") == 0) {
 		printf("Received UPGRADE command from client.\n");
 		return 6;
+	} else if(strcmp(command, "commit") == 0) {
+		printf("Received COMMIT command from client.\n");
+		return 7;
 	} else {
 		;
 	}
@@ -673,7 +677,7 @@ int upgrade(char* projName, int sockfd) {
 	
 	if(i < 0) {
 		fprintf(stderr, "Error with ioctl().\n");
-		exit(1);
+		return 1;
 	}
 	
 	char *buffer = malloc((n+1)*sizeof(char)); //[n+1];
@@ -683,7 +687,13 @@ int upgrade(char* projName, int sockfd) {
 		n = read(sockfd, buffer, n);
 	}
 	
-	// tar -czf .server/archive1.tar.gz .server/projName/1 ./server/projName/2 
+	if(strcmp(buffer, "") == 0) {
+		fprintf(stdout, "Client's project up-to-date. No need to continue. Exiting...\n");
+		return 1;
+	}
+
+
+		// tar -czf .server/archive1.tar.gz .server/projName/1 ./server/projName/2 
 		// Take given file names from the client and reformat into names used for tar.
 	int numLines = 0;
 	i = 0;
@@ -786,6 +796,89 @@ int upgrade(char* projName, int sockfd) {
 }
 
 
+int commit(char* projName, int sockfd) {
+
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
+
+	char command[strlen(projName) + 52];
+	bzero(command, (strlen(projName) + 52));
+	strcpy(command, "tar -czf .server/archive.tar.gz .server/");
+	strcat(command, projName);
+	strcat(command, "/.Manifest");
+	
+
+		// Tar project and send it over.
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error compressing `.Manifest` in project: %s\n", projName);
+		return 1;
+	}
+
+	int fd = open(".server/archive.tar.gz", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening: .server/archive.tar.gz\n");
+		return 1;
+	}
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	unsigned char buffer[(int)fileSize + 1];
+
+	int rd = read(fd, buffer, (int)fileSize);
+	if(rd < 0) {
+		fprintf(stderr, "Error reading from: .server/archive.tar.gz\n");	
+		return 1;
+	}
+	close(fd);
+
+		// Send compressed project back to client.
+	write(sockfd, buffer, (int)fileSize);
+	printf("Sent compressed .Manifest to client for evaluation.\n");
+
+		// Remove tar file from server.
+	int rmv = remove(".server/archive.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
+		return 1;
+	}
+
+	return 0;	
+}
+
+
 int main(int argc, char** argv) {
 
 	if(argc != 2) {
@@ -877,7 +970,6 @@ int main(int argc, char** argv) {
 		n = read(newsockfd, buffer, n);
 	}
 	
-
 		// Get the command given from client. (Create, history, rollback, etc...)
 		// 1 - create
 		// 2 - destroy
@@ -885,6 +977,7 @@ int main(int argc, char** argv) {
 		// 4 - currentversion
 		// 5 - update
 		// 6 - upgrade
+		// 7 - commit
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -908,11 +1001,15 @@ int main(int argc, char** argv) {
 		char* projectName = getProjectName(buffer);
 		update(projectName, newsockfd);
 		free(projectName);
-	} else if(command = 6) {
+	} else if(command == 6) {
 		char* projectName = getProjectName(buffer);
 		upgrade(projectName, newsockfd);
 		free(projectName);
-	} else {
+	} else if(command == 7) {
+		char* projectName = getProjectName(buffer);
+		commit(projectName, newsockfd);
+		free(projectName);
+	}  else {
 		;
 	}
 	}

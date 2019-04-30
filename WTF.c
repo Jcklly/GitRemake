@@ -1256,7 +1256,7 @@ void update(char* projName) {
 		// Parse manifest from server and client into structs to compare.
 	files *s = malloc(numLines_s * sizeof(*s));
 	files *c = malloc(numLines_c * sizeof(*c));	
-	files *lc = malloc(numLines_c * sizeof(*c));
+//	files *lc = malloc(numLines_c * sizeof(*c));
 
 	parseManifest(s, ".", "Server's .Manifest");
 	parseManifest(c, projName, "Client's .Manifest");
@@ -1495,7 +1495,6 @@ void update(char* projName) {
 
 		free(s);
 		free(c);
-		free(lc);
 		close(sockfd);
 		free(ipAddress);
 		free(portS);
@@ -1511,7 +1510,6 @@ void update(char* projName) {
 	
 	free(s);
 	free(c);
-	free(lc);
 	close(sockfd);
 	free(ipAddress);
 	free(portS);
@@ -1622,6 +1620,14 @@ void upgrade(char* projName) {
 
 	if(numLines == 0) {
 		fprintf(stdout, "%s is up to date!\n", projName);
+		int rmvv = remove(updateFile);
+		if(rmvv < 0) {
+			fprintf(stderr, "Error removing .Update file from project: `%s`\n", projName);
+			close(sockfd);
+			free(ipAddress);
+			free(portS);
+			exit(1);
+		}
 		close(sockfd);
 		free(ipAddress);
 		free(portS);
@@ -1851,6 +1857,343 @@ void upgrade(char* projName) {
 	free(m);
 }
 
+
+	// 3.4 - Commit
+void commit(char* projName) {
+	
+		// Check if .Update file is there, and if it is make sure it is not empty.
+	char updatePath[strlen(projName) + 8];
+	bzero(updatePath, 8);
+
+	strcpy(updatePath, projName);
+	strcat(updatePath, "/.Update");
+
+	int acc = -1;
+	acc = access(updatePath, F_OK);
+	if(acc >= 0) {
+		// Check if file is 0 bytes or not
+		int fd = open(updatePath, O_RDONLY);
+		off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+		size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+		lseek(fd, cp, SEEK_SET);
+		close(fd);
+
+			// .Update file found and not empty...
+		if((int)fileSize > 0) {
+			fprintf(stderr, ".Update file was found in the project and it is not empty. Please do `./WTF upgrade %s` before proceeding with a commit/push.\n", projName);
+			exit(1);
+		}
+	}
+
+
+
+		// Connect to server and retrieve .Manifest	
+	int sockfd = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error creating server socket.\n");
+		exit(1);
+	}
+
+
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// update:  :<projName>
+	int n, i, recLength;
+	n = i = recLength = 0;
+	
+	char sendBuf[11 + strlen(projName)];
+	bzero(sendBuf, 11 + strlen(projName));
+	
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "commit:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+	
+        fd_set set;
+        struct timeval timeout;
+
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+        select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+        i = ioctl(sockfd, FIONREAD, &recLength);
+
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+                exit(1);
+        }
+
+        char recBuf[recLength+1];
+        bzero(recBuf, recLength+1);
+
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+	
+	if(recLength == 0) {
+		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+	printf("Received .Manifest from the server. Proceeding to evaluate changes...\n");
+	
+	int fd = open("archive.tar.gz", O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		fprintf(stderr, "Error creating archive.tar.gz in client\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+		
+	}
+	write(fd, recBuf, recLength);
+	close(fd);
+
+		// untar project into current directory
+	char command[50];
+	strcpy(command, "tar --strip-components=2 -zxf archive.tar.gz");
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error untar-ing project received from server.\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	
+		// Remove old tar file
+	int rmv = remove("./archive.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+
+		// Have the server's .Manifest. Need to evalute changes and compare to our own.
+	
+		// Number of lines in server's .Manifest
+	fd = open(".Manifest", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening .Manifest\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}		
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	char server_manifest[(int)fileSize + 1];
+
+	int rfd = read(fd, server_manifest, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from .Manifest\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	close(fd);
+	server_manifest[(int)fileSize] = '\0';
+	
+	i = 0;
+	int numLines_s = 0;
+	while(i < (int)fileSize) {
+		if(server_manifest[i] == '\n') {
+			++numLines_s;
+		}
+		++i;
+	}	
+	
+
+		// Now get the number of lines from the client's .Manifest
+	char manifest_c[strlen(projName) + 11];
+	strcpy(manifest_c, projName);
+	strcat(manifest_c, "/.Manifest");
+
+	fd = open(manifest_c, O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening clients .Manifest in project: %s\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}		
+	
+	fileSize = 0;
+	cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	char client_manifest[(int)fileSize + 1];
+
+	rfd = read(fd, client_manifest, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error readiing from clients .Manifest in project: %s\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	close(fd);
+	client_manifest[(int)fileSize] = '\0';	
+
+	i = 0;
+	int numLines_c = 0;
+	while(i < (int)fileSize) {
+		if(client_manifest[i] == '\n') {
+			++numLines_c;
+		}
+		++i;
+	}	
+
+		// Parse manifest from server and client into structs to compare.
+	files *s = malloc(numLines_s * sizeof(*s));
+	files *c = malloc(numLines_c * sizeof(*c));
+	files *lc = malloc(numLines_c * sizeof(*c));
+
+	parseManifest(s, ".", "Server's .Manifest");
+	parseManifest(c, projName, "Client's .Manifest");
+
+
+
+		// Check and make sure manifest versions match...
+	if(s[0].version_number != c[0].version_number) {
+		fprintf(stdout, "client and server manifest versions do not match.\nPlease update your local project first.(update + upgrade)\n");
+		close(sockfd);
+		free(ipAddress);	
+		free(portS);
+		free(s);
+		free(lc);
+		free(c);
+		exit(1);
+	}
+
+	
+		// recompute hash codes for all files inside client's .Manifest
+	i = 0;
+	while(i < numLines_c) {
+		
+		fd = open(c[i].file_name, O_RDONLY);
+		if(fd < 0) {
+			fprintf(stderr, "Error opening file: `%s`.\nThis file is in the client's .Manifest but not in the project.\n");
+			close(sockfd);
+			free(ipAddress);
+			free(portS);
+			free(s);
+			free(c);
+			free(lc);
+			exit(1);
+		}
+
+		cp = lseek(fd, (size_t)0, SEEK_CUR);	
+		fileSize = lseek(fd, (size_t)0, SEEK_END); 
+		lseek(fd, cp, SEEK_SET);
+
+			// Generate hash for file.
+		char buffer[(int)fileSize+1];
+		bzero(buffer, (int)fileSize+1);
+		int rfd = read(fd, buffer, fileSize);
+		if(rfd < 0) {
+			fprintf(stderr, "Error readiing from file: %s", c[i].file_name);
+			close(sockfd);
+			free(ipAddress);
+			free(portS);
+			free(s);
+			free(c);
+			free(lc);
+			exit(1);
+		}
+		close(fd);
+		buffer[(int)fileSize] = '\0';
+
+			// Generate live hash
+		unsigned char hash[SHA256_DIGEST_LENGTH];
+		bzero(hash, SHA256_DIGEST_LENGTH);
+		SHA256(buffer, strlen(buffer), hash);
+		
+			// Converts hash into string.
+		char hashString[65];
+		bzero(hashString, 65);
+		hashString[64] = '\0';
+		int p = 0;
+		while(p < SHA256_DIGEST_LENGTH) {
+			sprintf(&hashString[p*2], "%02x", hash[p]);
+			++p;
+		}
+
+		lc[i].version_number = c[i].version_number;
+		strcpy(lc[i].file_name, c[i].file_name);
+		strcpy(lc[i].file_hash, hashString);
+
+		++i;
+	}
+
+
+
+		// Now we have the live hashes of all files in clients .Manifest, continue checking...
+		
+
+
+
+
+
+
+
+	close(sockfd);
+	free(ipAddress);	
+	free(portS);
+	free(s);
+	free(lc);
+	free(c);
+}
+
+
+
 int main(int argc, char* argv[]) {
 
 		// Checks if no arguments are given
@@ -1934,6 +2277,17 @@ int main(int argc, char* argv[]) {
 		} else {
 			resolveIP();
 			upgrade(argv[2]);
+		}
+
+	} else if(strcmp(argv[1], "commit") == 0) {
+
+		if(argc != 3) {
+
+			fprintf(stderr, "Invalid number of arguments for COMMIT.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			commit(argv[2]);
 		}
 
 	}
