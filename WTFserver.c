@@ -920,7 +920,7 @@ int main(int argc, char *argv[] ) {
 		fprintf(stderr, "Error while binding server.\n");
 		exit(1);
 	}
-
+	printf("Listening for connections..\n");
 	while(1) {
 
 		// Listen for client connections

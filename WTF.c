@@ -1044,7 +1044,7 @@ void currentVersion(char* projName) {
 	// 3.0 - Stores IP Address and Port into ./.configure file.
 void configure(char* port, char* addr) {
 	
-	printf("%s\n",addr);
+	//printf("%s\n",addr);
 	int rmv = remove(".configure");
 
 	int length = strlen(port) + strlen(addr) + 2;
@@ -2329,6 +2329,8 @@ int main(int argc, char* argv[]) {
 			commit(argv[2]);
 		}
 
+	} else{
+		printf("invalid command\n");
 	}
 
 
