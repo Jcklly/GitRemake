@@ -879,7 +879,7 @@ int commit(char* projName, int sockfd) {
 }
 
 
-int main(int argc, char** argv) {
+int main(int argc, char *argv[] ) {
 
 	if(argc != 2) {
 		fprintf(stderr, "Invalid Number of Arguments.\nExpected a single Port #.\nReceived %d argument(s).\nUsage: ./WTFserver <PORT#>\n", argc - 1);
@@ -889,9 +889,10 @@ int main(int argc, char** argv) {
 	int sockfd = -1;
 	int newsockfd = -1;
 	int clientAddrInfo = -1;
-
+	// Server address/port struct
+	struct sockaddr_in serverAddr;
 	
-		// Convert port string to int
+	// Convert port string to int
 	int port = atoi(argv[1]);
 	if( port == 0 ) {
 		fprintf(stderr, "Invalid Port.\n");
@@ -900,22 +901,19 @@ int main(int argc, char** argv) {
 
 		// Create server socket
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if( sockfd == -1 ) {
-		fprintf(stderr, "Error creating server socket.\n");
+	if( sockfd < 0 ) {
+		perror("ERROR opening socket");
 		exit(1);
 	}
 
 	
-		// Server address/port struct
-	struct sockaddr_in serverAddr;
 
 		// Initialize server Addr
 	bzero((char*)&serverAddr, sizeof(serverAddr));	
 
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(port);
 	serverAddr.sin_addr.s_addr = INADDR_ANY;
-
+	serverAddr.sin_port = htons(port);
 
 		// Check return of binding
 	if( bind(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {

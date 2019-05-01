@@ -80,25 +80,30 @@ void create(char* projName) {
 	int sockfd = -1;
 	int newsockfd = -1;
 	int addrInfo = -1;
-
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sockfd == -1) {
 		fprintf(stderr, "Error creating server socket.\n");
 		exit(1);
 	}
 
-
+	struct hostent *server;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
 	char* ipAddress = getConfig(2);
 	char* portS = getConfig(1);
 	int portNum = atoi(portS);
-
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
 	bzero((char*)&serverAddr, sizeof(serverAddr));
-
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
 	serverAddr.sin_port = htons(portNum);
 
 
@@ -194,18 +199,24 @@ void destroy(char* projName) {
 	}
 
 
-//	struct sockaddr_in clientAddr;
+	struct hostent *server;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
 	char* ipAddress = getConfig(2);
 	char* portS = getConfig(1);
 	int portNum = atoi(portS);
-
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
 	bzero((char*)&serverAddr, sizeof(serverAddr));
-
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
 	serverAddr.sin_port = htons(portNum);
 
 
@@ -797,17 +808,24 @@ void checkout(char* projName) {
 	}
 
 
+	struct hostent *server;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
 	char* ipAddress = getConfig(2);
 	char* portS = getConfig(1);
 	int portNum = atoi(portS);
-
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
 	bzero((char*)&serverAddr, sizeof(serverAddr));
-
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
 	serverAddr.sin_port = htons(portNum);
 
 
@@ -930,17 +948,24 @@ void currentVersion(char* projName) {
 	}
 
 
+	struct hostent *server;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
 	char* ipAddress = getConfig(2);
 	char* portS = getConfig(1);
 	int portNum = atoi(portS);
-
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
 	bzero((char*)&serverAddr, sizeof(serverAddr));
-
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
 	serverAddr.sin_port = htons(portNum);
 
 
@@ -1019,7 +1044,7 @@ void currentVersion(char* projName) {
 	// 3.0 - Stores IP Address and Port into ./.configure file.
 void configure(char* port, char* addr) {
 	
-
+	printf("%s\n",addr);
 	int rmv = remove(".configure");
 
 	int length = strlen(port) + strlen(addr) + 2;
@@ -1058,17 +1083,24 @@ void update(char* projName) {
 	}
 
 
+	struct hostent *server;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
 	char* ipAddress = getConfig(2);
 	char* portS = getConfig(1);
 	int portNum = atoi(portS);
-
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
 	bzero((char*)&serverAddr, sizeof(serverAddr));
-
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
 	serverAddr.sin_port = htons(portNum);
 
 
@@ -1539,17 +1571,24 @@ void upgrade(char* projName) {
 	}
 
 
+	struct hostent *server;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
 	char* ipAddress = getConfig(2);
 	char* portS = getConfig(1);
 	int portNum = atoi(portS);
-
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
 	bzero((char*)&serverAddr, sizeof(serverAddr));
-
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
 	serverAddr.sin_port = htons(portNum);
 
 
@@ -1897,17 +1936,24 @@ void commit(char* projName) {
 	}
 
 
+	struct hostent *server;
 	struct sockaddr_in serverAddr;	
 
 		// Obtain IP Address and Port from .configure file
 	char* ipAddress = getConfig(2);
 	char* portS = getConfig(1);
 	int portNum = atoi(portS);
-
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
 	bzero((char*)&serverAddr, sizeof(serverAddr));
-
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
 	serverAddr.sin_port = htons(portNum);
 
 
@@ -2176,13 +2222,6 @@ void commit(char* projName) {
 
 
 		// Now we have the live hashes of all files in clients .Manifest, continue checking...
-		
-
-
-
-
-
-
 
 	close(sockfd);
 	free(ipAddress);	
