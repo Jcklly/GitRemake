@@ -195,8 +195,10 @@ void parseManifest(files* f, char* projName) {
 	
 	strcpy(f[line].file_name, ".Manifest");
 	strcpy(f[line].file_hash, "NULL");
-	char temp[i];
+	char temp[i+1];
+	bzero(temp, i+1);
 	memcpy(temp, buffer, i);
+	temp[i] = '\0';
 	f[line].version_number = atoi(temp);
 	++line;
 	++i;	
@@ -875,6 +877,56 @@ int commit(char* projName, int sockfd) {
 		return 1;
 	}
 
+
+
+		// read .commit file from client and store as active commit 
+	int n = 0;
+	fd_set set;
+	struct timeval timeout;
+
+	FD_ZERO(&set);
+	FD_SET(sockfd, &set);
+
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+	//ensures something is bring read from client
+	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+	//n is length of buffer
+	int i = ioctl(sockfd, FIONREAD, &n);
+	
+	if(i < 0) {
+		fprintf(stderr, "Error with ioctl().\n");
+		return 1;
+	}
+	
+	char *fileBuffer = malloc((n+1)*sizeof(char)); //[n+1];
+	bzero(buffer, n+1);
+
+	if(n > 0) {
+		n = read(sockfd, fileBuffer, n);
+	}
+	
+	printf("Received compressed .commit file from client. Storing as active commit.\n");
+
+	fd = open(".server/archive3.tar.gz", O_CREAT | O_RDWR, 0644);
+	write(fd, fileBuffer, n);	
+	close(fd);
+
+		// Untar .commit into project direcory.
+		// tar -zxf archiv
+	char untar[25];
+	strcpy(untar, "tar -C .server -zxf .server/archive3.tar.gz");
+
+	sys = system(untar);
+	if(sys < 0) {
+		fprintf(stderr, "Error un-tarring compressed .commit file.\n");
+		return 1;
+	}
+
+		// remove tar archive from server
+	rmv = remove(".server/archive3.tar.gz");
+
+	free(fileBuffer);
 	return 0;	
 }
 

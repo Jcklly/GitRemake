@@ -364,8 +364,10 @@ void parseManifest(files* f, char* projName, char* fileName) {
 	
 	strcpy(f[line].file_name, ".Manifest");
 	strcpy(f[line].file_hash, "NULL");
-	char temp[i];
+	char temp[i+1];
+	bzero(temp, i+1);
 	memcpy(temp, buffer, i);
+	temp[i] = '\0';
 	f[line].version_number = atoi(temp);
 	++line;
 	++i;	
@@ -1968,8 +1970,8 @@ void commit(char* projName) {
 
 		// Send project name to server.
 		// update:  :<projName>
-	int n, i, recLength;
-	n = i = recLength = 0;
+	int n, k, i, recLength;
+	n = i = k = recLength = 0;
 	
 	char sendBuf[11 + strlen(projName)];
 	bzero(sendBuf, 11 + strlen(projName));
@@ -2149,6 +2151,10 @@ void commit(char* projName) {
 
 		// Check and make sure manifest versions match...
 	if(s[0].version_number != c[0].version_number) {
+//		printf("%d : %d\n", s[0].version_number, c[0].version_number);
+
+//		printf("%d : %s\n", c[0].version_number, c[0].file_name);
+
 		fprintf(stdout, "client and server manifest versions do not match.\nPlease update your local project first.(update + upgrade)\n");
 		close(sockfd);
 		free(ipAddress);	
@@ -2220,8 +2226,235 @@ void commit(char* projName) {
 	}
 
 
+		// create .commit file with random number appended to it.
+	int r = 0;
+	srand(time(NULL));
+	r = rand() % 5000;
+	char appendInt[5];
+	bzero(appendInt, 5);
+
+	sprintf(appendInt, "%d", r);
+
+	char commitBuf[strlen(projName) + 15];
+	bzero(commitBuf, 15);
+
+	strcpy(commitBuf, projName);
+	strcat(commitBuf, "/.commit-");
+	strcat(commitBuf, appendInt);
+
+	char commitPath[strlen(projName) + 10];
+	strcpy(commitPath, projName);
+	strcat(commitPath, "/.commit");
+	
+	rmv = remove(commitPath);
+	
+	fd = open(commitPath, O_CREAT | O_RDWR | O_APPEND, 0644);
+	close(fd);
 
 		// Now we have the live hashes of all files in clients .Manifest, continue checking...
+
+
+		// Checks if newly computed hashcode is different than clients
+	i = k = 1;
+	int check = 0;
+	while(i < numLines_c) {
+		k = 1;
+		while(k < numLines_s) {	
+			
+				// in both clients and servers .Manifest
+			if(strcmp(c[i].file_name, s[k].file_name) == 0) {
+
+
+					// Checks if file is updated version	
+				if(strcmp(lc[i].file_hash, c[i].file_hash) != 0) {
+
+					lc[i].version_number += 1;
+					
+						// Checks for error
+					if(lc[i].version_number <= s[k].version_number) {
+						fprintf(stdout, "Error, local .Manifest is not up-to-date with the server. Please synch your project with the server before attempting to commit/push.\n");
+						check = -1;
+						i = numLines_c;
+						k = numLines_s;
+						break;
+					}
+
+
+	
+					fd = open(commitPath, O_APPEND | O_RDWR);
+					char vn[5];
+					bzero(vn, 5);	
+					sprintf(vn, "%d", lc[i].version_number);
+
+					char toAdd[strlen(lc[i].file_name) + strlen(lc[i].file_hash) + 12];
+					bzero(toAdd, strlen(lc[i].file_name) + strlen(lc[i].file_hash) + 12);	
+					
+					strcpy(toAdd, "U ");
+					strcat(toAdd, vn);
+					strcat(toAdd, " ");
+					strcat(toAdd, lc[i].file_name);
+					strcat(toAdd, " ");
+					strcat(toAdd, lc[i].file_hash);
+					strcat(toAdd, "\n");
+			
+					write(fd, toAdd, strlen(toAdd));
+
+					close(fd);
+					check = 1;
+				}
+				break;
+
+
+			}	
+
+				// File in client .Manifest but not in servers.
+			if( (strcmp(c[i].file_name, s[k].file_name) != 0) && (k == numLines_s-1) ) {
+
+
+				lc[i].version_number += 1;
+		
+				fd = open(commitPath, O_APPEND | O_RDWR);
+				char vn[5];
+				bzero(vn, 5);	
+				sprintf(vn, "%d", lc[i].version_number);
+
+				char toAdd[strlen(lc[i].file_name) + strlen(lc[i].file_hash) + 12];
+				bzero(toAdd, strlen(lc[i].file_name) + strlen(lc[i].file_hash) + 12);	
+				
+				strcpy(toAdd, "A ");
+				strcat(toAdd, vn);
+				strcat(toAdd, " ");
+				strcat(toAdd, lc[i].file_name);
+				strcat(toAdd, " ");
+				strcat(toAdd, lc[i].file_hash);
+				strcat(toAdd, "\n");
+		
+				write(fd, toAdd, strlen(toAdd));
+
+				close(fd);
+				check = 1;
+
+
+
+			}
+
+
+
+
+			++k;
+		}
+
+		++i;
+	}
+
+
+		// Checks if it is in the servers and not the clients (REMOVE)
+	i = k = 1;
+	while(k < numLines_s) {
+		i = 1;
+		while(i < numLines_c) {
+			
+			if(strcmp(s[k].file_name, c[i].file_name) == 0) {
+				break;
+			}			
+
+
+				// Checks for REMOVE
+			if( (strcmp(s[k].file_name, c[i].file_name) != 0) && (i == numLines_c-1) ) {
+
+				fd = open(commitPath, O_APPEND | O_RDWR);
+				char vn[5];
+				bzero(vn, 5);	
+				sprintf(vn, "%d", s[k].version_number);
+
+				char toAdd[strlen(s[k].file_name) + strlen(s[k].file_hash) + 12];
+				bzero(toAdd, strlen(s[k].file_name) + strlen(s[k].file_hash) + 12);	
+				
+				strcpy(toAdd, "D ");
+				strcat(toAdd, vn);
+				strcat(toAdd, " ");
+				strcat(toAdd, s[k].file_name);
+				strcat(toAdd, " ");
+				strcat(toAdd, s[k].file_hash);
+				strcat(toAdd, "\n");
+		
+				write(fd, toAdd, strlen(toAdd));
+
+				close(fd);
+				check = 1;
+			}
+
+			++i;
+		}
+	
+		++k;
+	}
+
+		// Bad case
+	if(check < 0) {
+		rmv = remove(commitPath);
+		close(sockfd);
+		free(ipAddress);	
+		free(portS);
+		free(s);
+		free(lc);
+		free(c);
+		exit(1);
+	}
+
+
+		// rename .commit, compress and send to server, change name back to original.
+	int ren = rename(commitPath, commitBuf);
+
+
+		// tar -czf archive3.tar.gz test/commit-
+	char commandSend[strlen(commitBuf) + 27];
+	bzero(commandSend, (strlen(commitBuf) + 27));
+	strcpy(commandSend, "tar -czf archive3.tar.gz ");
+	strcat(commandSend, commitBuf);
+
+	sys = system(commandSend);	
+
+
+
+		// Send archives .commit to server
+	
+	fd = open("archive3.tar.gz", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening: archive3.tar.gz\n");
+	}
+
+	cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	unsigned char sendCommit[(int)fileSize + 1];
+
+	int rd = read(fd, sendCommit, (int)fileSize);
+	if(rd < 0) {
+		fprintf(stderr, "Error reading from: archive3.tar.gz\n");	
+	}
+	close(fd);
+	sendCommit[(int)fileSize] = '\0';
+
+		// Send compressed project back to client.
+	write(sockfd, sendCommit, (int)fileSize);
+	printf("Success: sent compressed .commit to server.\n");
+
+		// Remove tar file from server.
+	rmv = remove("archive3.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: archive3.tar.gz\n");
+	}
+		// Remove server's .Manifest
+	rmv = remove(".Manifest");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .Manifest");
+	}
+
+
+		// Rename .commit-# back to .commit
+	ren = rename(commitBuf, commitPath);
 
 	close(sockfd);
 	free(ipAddress);	
