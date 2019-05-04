@@ -1,0 +1,8 @@
+create
+1
+
+push
+2
+U 2 test/file6.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+A 2 test/testfile.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
