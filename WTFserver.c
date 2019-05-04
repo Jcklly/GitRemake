@@ -1855,7 +1855,74 @@ int history(char* projName, int sockfd) {
 
 
 int rollback(char* projName, int sockfd) {
+	printf("rollback:%s\n", projName);
+	
+	int i = 0;
+	while(i < strlen(projName)) {
+		if(projName[i] == ':') {
+			break;
+		}
+		++i;
+	}
+	
+	char * version=malloc(sizeof(char)*5);
+	memcpy(version, projName+i+1, strlen(projName));
+	//versionNum = projName+i;
+	projName[i] = '\0';
+	
+	//printf("projName:%s\n", projName);
+	//printf("verson:%s\n", version);
+	int versionNum = atoi(version);
+	//printf("verson:%d\n", versionNum);
+	
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");	
+	struct dirent *status = NULL;
 
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
+	char* projPath = malloc( sizeof(char)*strlen(projName) + 18*sizeof(char) );
+	//strcat(projName);
+	strcpy(projPath, ".server/");
+	strcat(projPath, projName);
+	//strcat(projPath, "/.versions");
+	//printf("path:%s\n", projPath);
+	
+	d = opendir(projPath);
+	if(d == NULL) {
+		printf("directory does not exist\n");
+		return 0;
+	}
+	rollbackDelete(projPath);//delete everything
+	char tarPath = malloc(sizeof(char)*100);
+	strcpy()
+	system("tar -xczf .server/test/.versions/1.tar.gz");
 	return 0;
 }
 
