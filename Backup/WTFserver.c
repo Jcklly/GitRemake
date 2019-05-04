@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <openssl/sha.h>
 #include "helper.h"
 
 	// Gets the command given from the protocol.
@@ -23,6 +24,8 @@
 	// 4 - currentversion
 	// 5 - update
 	// 6 - upgrade
+	// 7 - commit
+	// 8 - push
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -55,6 +58,12 @@ int getCommand(char* buf) {
 	} else if(strcmp(command, "upgrade") == 0) {
 		printf("Received UPGRADE command from client.\n");
 		return 6;
+	} else if(strcmp(command, "commit") == 0) {
+		printf("Received COMMIT command from client.\n");
+		return 7;
+	} else if(strcmp(command, "push") == 0) {
+		printf("Received PUSH command from client.\n");
+		return 8;
 	} else {
 		;
 	}
@@ -191,8 +200,10 @@ void parseManifest(files* f, char* projName) {
 	
 	strcpy(f[line].file_name, ".Manifest");
 	strcpy(f[line].file_hash, "NULL");
-	char temp[i];
+	char temp[i+1];
+	bzero(temp, i+1);
 	memcpy(temp, buffer, i);
+	temp[i] = '\0';
 	f[line].version_number = atoi(temp);
 	++line;
 	++i;	
@@ -237,6 +248,103 @@ void parseManifest(files* f, char* projName) {
 
 }
 
+	// Parses the .Update file into uFiles struct
+	// return values:
+	// -1 - .Update is empty
+	// -2 - error reading/opening
+	// anything else - good
+	// flag == 1 -> .update
+	// flag == 2 -> .commit
+int parseUpdate(uFiles *f, char* projName, int flag) {
+
+
+	char pathUpdate[strlen(projName) + 17];
+	strcpy(pathUpdate, ".server/");
+	strcat(pathUpdate, projName);
+
+	if(flag == 1) {
+		strcat(pathUpdate, "/.Update");
+	} else {
+		strcat(pathUpdate, "/.commit");
+	}
+
+	int fd = open(pathUpdate, O_RDONLY);		
+	if(fd < 0) {
+		printf("Error opening .Update within project: `%s`\n", projName);
+		return;
+	}		
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	if((int)fileSize == 0) {
+		fprintf(stdout, "Project is up to date\n");
+		close(fd);
+		return -1;
+	}
+	
+
+	char buffer[(int)fileSize + 1];
+	bzero(buffer, (int)fileSize+1);
+
+	int rfd = read(fd, buffer, (int)fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error reading from .Update within project: `%s`", projName);
+		close(fd);
+		return -2;
+	}
+	close(fd);
+	buffer[(int)fileSize] = '\0';
+
+	int numElements, line, i;
+	i = numElements = line = 0;
+	
+	while(i < strlen(buffer)) {
+		if(buffer[i] == ' ') {
+			++numElements;
+		}
+		if(buffer[i] == '\n') {
+			++numElements;
+			buffer[i] = ',';
+		}
+		++i;
+	}
+	
+	char* tokenized[numElements];
+	i = 0;
+	tokenized[i] = strtok(buffer, " ,");
+	
+	while(tokenized[i] != NULL) {
+		tokenized[++i] = strtok(NULL, " ,");
+	}
+
+	i = 0;
+/*	while(i < numElements) {
+		printf("%s\n", tokenized[i]);
+		++i;
+	}
+*/
+	i = 0;
+	while(i < numElements) {
+		if(i%4 == 0) {
+			++line;
+		}
+		if(i+1 > numElements || i+2 > numElements || i+3 > numElements) {
+			break;
+		}
+		strcpy(f[line-1].code, tokenized[i]);
+		f[line-1].version_number = atoi(tokenized[i+1]);
+		strcpy(f[line-1].file_name, tokenized[i+2]);
+		strcpy(f[line-1].file_hash, tokenized[i+3]);
+		i += 4;
+//		printf("%s : %d : %s : %s\n", f[line-1].code, f[line-1].version_number, f[line-1].file_name, f[line-1].file_hash);
+
+	}
+
+	return 0;
+
+}
 
 	// 3.6 -- create
 int create(char* projName, int sockfd) {
@@ -673,7 +781,7 @@ int upgrade(char* projName, int sockfd) {
 	
 	if(i < 0) {
 		fprintf(stderr, "Error with ioctl().\n");
-		exit(1);
+		return 1;
 	}
 	
 	char *buffer = malloc((n+1)*sizeof(char)); //[n+1];
@@ -683,7 +791,13 @@ int upgrade(char* projName, int sockfd) {
 		n = read(sockfd, buffer, n);
 	}
 	
-	// tar -czf .server/archive1.tar.gz .server/projName/1 ./server/projName/2 
+	if(strcmp(buffer, "") == 0) {
+		fprintf(stdout, "Client's project up-to-date. No need to continue. Exiting...\n");
+		return 1;
+	}
+
+
+		// tar -czf .server/archive1.tar.gz .server/projName/1 ./server/projName/2 
 		// Take given file names from the client and reformat into names used for tar.
 	int numLines = 0;
 	i = 0;
@@ -786,7 +900,757 @@ int upgrade(char* projName, int sockfd) {
 }
 
 
-int main(int argc, char** argv) {
+int commit(char* projName, int sockfd) {
+
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
+
+	char command[strlen(projName) + 52];
+	bzero(command, (strlen(projName) + 52));
+	strcpy(command, "tar -czf .server/archive.tar.gz .server/");
+	strcat(command, projName);
+	strcat(command, "/.Manifest");
+	
+
+		// Tar project and send it over.
+	int sys = system(command);
+	if(sys < 0) {
+		fprintf(stderr, "Error compressing `.Manifest` in project: %s\n", projName);
+		return 1;
+	}
+
+	int fd = open(".server/archive.tar.gz", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening: .server/archive.tar.gz\n");
+		return 1;
+	}
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	unsigned char buffer[(int)fileSize + 1];
+
+	int rd = read(fd, buffer, (int)fileSize);
+	if(rd < 0) {
+		fprintf(stderr, "Error reading from: .server/archive.tar.gz\n");	
+		return 1;
+	}
+	close(fd);
+
+		// Send compressed project back to client.
+	write(sockfd, buffer, (int)fileSize);
+	printf("Sent compressed .Manifest to client for evaluation.\n");
+
+		// Remove tar file from server.
+	int rmv = remove(".server/archive.tar.gz");
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
+		return 1;
+	}
+
+
+
+		// read .commit file from client and store as active commit 
+	int n = 0;
+	fd_set set;
+	struct timeval timeout;
+
+	FD_ZERO(&set);
+	FD_SET(sockfd, &set);
+
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+	//ensures something is bring read from client
+	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+	//n is length of buffer
+	int i = ioctl(sockfd, FIONREAD, &n);
+	
+	if(i < 0) {
+		fprintf(stderr, "Error with ioctl().\n");
+		return 1;
+	}
+	
+	char *fileBuffer = malloc((n+1)*sizeof(char)); //[n+1];
+	bzero(buffer, n+1);
+
+	if(n > 0) {
+		n = read(sockfd, fileBuffer, n);
+	}
+	
+	printf("Received compressed .commit file from client. Storing as active commit.\n");
+
+	fd = open(".server/archive3.tar.gz", O_CREAT | O_RDWR, 0644);
+	write(fd, fileBuffer, n);	
+	close(fd);
+
+		// Untar .commit into project direcory.
+		// tar -zxf archiv
+	char untar[44];
+	strcpy(untar, "tar -C .server -zxf .server/archive3.tar.gz");
+
+	sys = system(untar);
+	if(sys < 0) {
+		fprintf(stderr, "Error un-tarring compressed .commit file.\n");
+		return 1;
+	}
+
+		// remove tar archive from server
+	rmv = remove(".server/archive3.tar.gz");
+
+	free(fileBuffer);
+	return 0;	
+}
+
+
+int push(char* projName, int sockfd) {
+
+	char* pName = malloc(100*sizeof(char));
+	strcpy(pName, projName);
+
+
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check.
+		// Send to client yes (project exists) or no (doesn't exist)
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		free(pName);
+		return 1;
+	} else {
+		write(sockfd, "yes", 3);
+	}
+
+	int n = 0;
+	fd_set set;
+	struct timeval timeout;
+
+	FD_ZERO(&set);
+	FD_SET(sockfd, &set);
+
+	timeout.tv_sec = 5;
+	timeout.tv_usec = 0;
+		//ensures something is being read from client
+	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+
+
+		//n is length of buffer
+	int i = ioctl(sockfd, FIONREAD, &n);
+	
+	if(i < 0) {
+		fprintf(stderr, "Error with ioctl().\n");
+		free(pName);
+		return 1;
+	}
+	char *buffer = malloc((n+1)*sizeof(char)); //[n+1];
+
+	if(n > 0) {
+		n = read(sockfd, buffer, n);
+	}
+	if(strcmp(buffer, "") == 0) {
+		fprintf(stdout, "Client's project up-to-date. No need to continue. Exiting...\n");
+		free(pName);
+		free(buffer);
+		return 1;
+	}
+
+		// Creates archive for the tar sent by the client.
+	int fd = open(".server/archive4.tar.gz", O_CREAT | O_RDWR, 0644);
+	if(fd < 0) {
+		fprintf(stderr, "Error creating archive4.tar.gz.\n");
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+	write(fd, buffer, n);
+	close(fd);
+
+		// Untar only the .commit file to check if there is an active commit that matches it.
+		// tar -C .server -zxf .server/archive4.tar.gz test/.commit
+	char unTar[strlen(pName) + 53];
+	strcpy(unTar, "tar -C .server -zxf .server/archive4.tar.gz ");
+	strcat(unTar, projName);
+	strcat(unTar, "/.commit");
+	int sys = system(unTar);
+	if(sys < 0) {
+		fprintf(stderr, "Error extracting .commit from archive4.tar.gz.\n");
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+		//.server/ /.commit
+	char c_commit[strlen(pName) + 17];
+	strcpy(c_commit, ".server/");
+	strcat(c_commit, pName);
+	strcat(c_commit, "/.commit");
+
+		// Get hash from .commit send by the client.
+	fd = open(c_commit, O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening file:.\nThis file is in the client's .Manifest but not in the project.\n");
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+		// Generate hash for file.
+	char bufferH[(int)fileSize+1];
+	bzero(bufferH, (int)fileSize+1);
+	int rfd = read(fd, bufferH, fileSize);
+	if(rfd < 0) {
+		fprintf(stderr, "Error reading from file: .commit");
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+	close(fd);
+	bufferH[(int)fileSize] = '\0';
+
+		// Generate live hash
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+	bzero(hash, SHA256_DIGEST_LENGTH);
+	SHA256(bufferH, strlen(bufferH), hash);
+	
+		// Converts hash into string.
+	char hashStringC[65];
+	bzero(hashStringC, 65);
+	hashStringC[64] = '\0';
+	int p = 0;
+	while(p < SHA256_DIGEST_LENGTH) {
+		sprintf(&hashStringC[p*2], "%02x", hash[p]);
+		++p;
+	}
+	
+
+		// .commit extracted. Need to see if there is an active commit that matches it.
+		// If not, we can simply stop.
+	char projectPath[strlen(pName) + 9];
+	strcpy(projectPath, ".server/");
+	strcat(projectPath, pName);
+
+	
+	d = opendir(projectPath);
+	status = NULL;
+	
+	int k, check;
+	check = k = 0;
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_REG ) { 
+				
+					// See if there is an active .commit that matches the one from the client
+					// Do this by computing hash and comparing.
+				char dPath[strlen(pName) + strlen(status->d_name) + 10];
+				bzero(dPath, (strlen(pName) + strlen(status->d_name) + 10));
+				strcpy(dPath, ".server/");
+				strcat(dPath, pName);
+				strcat(dPath, "/");
+				strcat(dPath, status->d_name);
+
+				fd = open(dPath, O_RDONLY);
+				if(fd < 0) {
+					fprintf(stderr, "Error opening file:.\nThis file is in the client's .Manifest but not in the project.\n");
+					free(buffer);
+					free(pName);
+					return 1;
+				}
+
+				cp = lseek(fd, (size_t)0, SEEK_CUR);	
+				fileSize = lseek(fd, (size_t)0, SEEK_END); 
+				lseek(fd, cp, SEEK_SET);
+
+					// Generate hash for file.
+				char bufferS[(int)fileSize+1];
+				bzero(bufferS, (int)fileSize+1);
+				rfd = read(fd, bufferS, fileSize);
+				if(rfd < 0) {
+					fprintf(stderr, "Error reading from file: .commit");
+					free(buffer);
+					free(pName);
+					return 1;
+				}
+				close(fd);
+				bufferS[(int)fileSize] = '\0';
+
+					// Generate live hash
+				unsigned char hashS[SHA256_DIGEST_LENGTH];
+				bzero(hashS, SHA256_DIGEST_LENGTH);
+				SHA256(bufferS, strlen(bufferS), hashS);
+				
+					// Converts hash into string.
+				char hashStringS[65];
+				bzero(hashStringS, 65);
+				hashStringS[64] = '\0';
+				p = 0;
+				while(p < SHA256_DIGEST_LENGTH) {
+					sprintf(&hashStringS[p*2], "%02x", hashS[p]);
+					++p;
+				}
+				
+					// See if two files have the same hash...
+				if(strcmp(hashStringS, hashStringC) == 0) {
+					if(strcmp(status->d_name, ".commit") != 0) {
+						check = 1;
+						break;
+					}
+				}
+
+
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+
+		// If no matching active commit (expired commit) then remove archive and commit file
+	if(check != 1) {
+		printf("No matching active commit found on the server. Expired commit.\n");
+		int rmv = remove(".server/archive4.tar.gz");
+		rmv = remove(c_commit);
+		free(buffer);
+		free(pName);
+		return 0;
+	}	
+
+
+		// Remove all other active commits...
+	d = opendir(projectPath);
+	status = NULL;
+	
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_REG ) { 
+
+				char splitC[8];
+				memcpy(splitC, status->d_name, 7);
+				splitC[7] = '\0';
+				
+				if(strcmp(splitC, ".commit") == 0) {
+
+					char delPath[strlen(pName) + strlen(status->d_name) + 10];
+					bzero(delPath, (strlen(pName) + strlen(status->d_name) + 10));
+					strcpy(delPath, ".server/");
+					strcat(delPath, pName);
+					strcat(delPath, "/");
+					strcat(delPath, status->d_name);
+
+
+					
+						// Deletes all active commits	
+					int rmvv = remove(delPath);
+				}
+
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+
+		// Look into the .versions folder and get the highest integer.
+	char vPath[strlen(pName) + 19];
+	strcpy(vPath, ".server/");
+	strcat(vPath, pName);
+	strcat(vPath, "/.versions");
+
+	d = opendir(vPath);
+	status = NULL;
+	
+	int highestVersion = 0;
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_REG ) { 
+
+				i = 0;
+				while(status->d_name[i] != '.') {
+					++i;
+				}
+				char temp[i+1];
+				bzero(temp, i+1);
+				memcpy(temp, status->d_name, i);
+				temp[i] = '\0';
+				
+				int curVersion = atoi(temp);
+
+				if(curVersion > highestVersion) {
+					highestVersion = curVersion;
+				}
+
+
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+
+		// Will be the new latest version of the project
+	highestVersion += 1;
+
+		// Tar the current project and send copy it into .versions.
+	char versionName[12];
+	sprintf(versionName, "%d", highestVersion);
+	strcat(versionName, ".tar.gz");	
+
+	char to_Loc[strlen(vPath) + strlen(versionName) + 2];
+	strcpy(to_Loc, vPath);
+	strcat(to_Loc, "/");
+	strcat(to_Loc, versionName);
+
+	char historyPath[strlen(pName) + 18];
+	strcpy(historyPath, ".server/");
+	strcat(historyPath, pName);
+	strcat(historyPath, "/.history");
+
+	char dirC[strlen(projName) + 9];
+	strcpy(dirC, ".server/");
+	strcat(dirC, pName);
+
+	// tar -czf .server/test/.versions/6.tar.gz --exclude=".server/test/.versions" --exclude=".server/test/.history" .server/test
+
+	char tarV[strlen(to_Loc) + strlen(vPath) + strlen(historyPath) + strlen(dirC) + 41];
+	bzero(tarV, (strlen(to_Loc) + strlen(vPath) + strlen(historyPath) + strlen(dirC) + 41));
+	strcpy(tarV, "tar -czf ");
+	strcat(tarV, to_Loc);
+	strcat(tarV, " --exclude=\"");
+	strcat(tarV, vPath);
+	strcat(tarV, "\" --exclude=\"");
+	strcat(tarV, historyPath);
+	strcat(tarV, "\" ");
+	strcat(tarV, dirC);
+	
+		// Compresses the project directory before changing/adding files to it. (extra credit)
+	sys = system(tarV);
+	if(sys < 0) {
+		fprintf(stderr, "Error while compressing direction to store into .versions.\n");
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+
+		// tar -C .server -zxf .server/archive4.tar.gz
+		// Directory is now compressed. We can continue to untar files from client into current directory.	
+	char pushCommand[44];
+	strcpy(pushCommand, "tar -C .server -zxf .server/archive4.tar.gz");
+
+		// Untar the compressed files from the client into the servers version of the project.
+	sys = system(pushCommand);
+	if(sys < 0) {
+		fprintf(stderr, "Error while decompressing files from client into the server's directory.\n");
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+		// Remove archive
+	int rmv = remove(".server/archive4.tar.gz");
+
+
+		// Update the .history and .Manifest on the server with files from .commit
+		// Parse the .commit && the .Maniefst -> Do changes -> Rebuild .Manifest
+	fd = open(c_commit, O_RDONLY);
+	
+	cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+	
+	char commitBuf[(int)fileSize + 1];
+	bzero(commitBuf, (int)fileSize + 1);
+
+	rfd = read(fd, commitBuf, (int)fileSize);
+	close(fd);
+	commitBuf[(int)fileSize] = '\0';
+	
+	i = 0;
+	int numLines_c = 0;
+	while(i < (int)fileSize) {
+		if(commitBuf[i] == '\n') {
+			++numLines_c;
+		}
+		++i;
+	}	
+		
+		// Struct for holding parsed .Update file.
+	uFiles *c = malloc(numLines_c*sizeof(*c));
+	int rtn = parseUpdate(c, projName, 2);
+	if(rtn == -2) {
+		fprintf(stderr, "Error opening .Update file.\n");
+		free(c);
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+		// Gets the number of 'A' codes from the .commit file for adding to the malloc for .Manifest
+	i = 0;
+	int addM = 0;
+	while(i < numLines_c) {
+		if(strcmp(c[i].code, "A") == 0) {
+			++addM;	
+		}
+		++i;
+	}
+
+		// Parse the .Manifest
+	char mPath[strlen(projectPath) + 11];
+	strcpy(mPath, projectPath);
+	strcat(mPath, "/.Manifest");
+
+	fd = open(mPath, O_RDONLY);
+	
+	cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+	
+	char mBuf[(int)fileSize + 1];
+	bzero(mBuf, (int)fileSize + 1);
+
+	rfd = read(fd, mBuf, (int)fileSize);
+	close(fd);
+	mBuf[(int)fileSize] = '\0';
+	
+	i = 0;
+	int numLines_m = 0;
+	while(i < (int)fileSize) {
+		if(mBuf[i] == '\n') {
+			++numLines_m;
+		}
+		++i;
+	}	
+	
+	files *m = malloc((numLines_m+addM)*(sizeof(*m)));
+	parseManifest(m, pName);
+
+
+	i = k = 0;
+	int holder = numLines_m;
+	int totalBytes = 0;
+	while(i < numLines_c) {
+		k = 0;
+		while(k < numLines_m) {
+			
+				// Updating .Manifest with everything from .commit
+			if(strcmp(c[i].file_name, m[k].file_name) == 0) {
+				if(strcmp(c[i].code, "D") == 0) {
+					m[k].version_number = 0;
+					char toRemove[strlen(m[k].file_name) + 9];
+					strcpy(toRemove, ".server/");
+					strcat(toRemove, m[k].file_name);
+					int rmv = remove(toRemove);
+					totalBytes += (strlen(c[i].file_name) + strlen(c[i].file_hash));
+				} else if(strcmp(c[i].code, "U") == 0) {
+					bzero(m[k].file_hash, strlen(c[i].file_hash));
+					strcpy(m[k].file_hash, c[i].file_hash);
+					m[k].version_number = c[i].version_number;
+					totalBytes += (strlen(c[i].file_name) + strlen(c[i].file_hash));
+				}
+				break;
+			}
+	
+				// Inside commit and not Manifest ('A' code)
+			if( (strcmp(c[i].file_name, m[k].file_name) != 0) && (k == numLines_m-1) ) {
+				if(strcmp(c[i].code, "A") == 0) {
+						// Add file into the .Manifest. Space already allocated
+					strcpy(m[holder].file_name, c[i].file_name);
+					strcpy(m[holder].file_hash, c[i].file_hash);
+					m[holder].version_number = 1;
+					totalBytes += (strlen(c[i].file_name) + strlen(c[i].file_hash));
+					++holder;
+				}
+			}		
+			++k;
+		}
+		++i;
+	}
+
+		// Increase manifest version number
+	m[0].version_number += 1;
+
+
+		// Rebuild the .Manifest
+	rebuildManifest(m, mPath, (numLines_m + addM));
+
+
+		// Update the .history with operations
+	char hBuf[numLines_c*(totalBytes + 23)];
+	bzero(hBuf, (numLines_c*(totalBytes + 23)));
+
+	strcpy(hBuf, "push\n");
+	char mVN[5];
+	bzero(mVN, 5);
+	sprintf(mVN, "%d", (m[0].version_number-1));
+	strcat(hBuf, mVN);
+	strcat(hBuf, "\n");
+	i = 0;
+	while(i < numLines_c) {
+		char VN[5];
+		bzero(VN, 5);
+		sprintf(VN, "%d", c[i].version_number);
+	
+		strcat(hBuf, c[i].code);
+		strcat(hBuf, " ");
+		strcat(hBuf, VN);
+		strcat(hBuf, " ");
+		strcat(hBuf, c[i].file_name);
+		strcat(hBuf, " ");
+		strcat(hBuf, c[i].file_hash);
+		strcat(hBuf, "\n");
+		++i;
+	}
+	strcat(hBuf, "\n");
+
+	fd = open(historyPath, O_APPEND | O_RDWR);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening .history file on server.\n");
+		free(c);
+		free(m);
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+	write(fd, hBuf, strlen(hBuf));
+	close(fd);
+
+		// Remove .commit
+	rmv = remove(c_commit);
+
+
+		// Send server's .Manifest back to the client
+	char sendM[strlen(mPath) + 34];
+	bzero(sendM, (strlen(mPath) + 34));
+	strcpy(sendM, "tar -czf .server/archive5.tar.gz ");
+	strcat(sendM, mPath);
+	
+
+		// Tar/compress .Manifest and send it over to the client.
+	sys = system(sendM);
+	if(sys < 0) {
+		fprintf(stderr, "Error compressing `.Manifest` in project: %s\n", pName);
+		free(c);
+		free(m);
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+	fd = open(".server/archive5.tar.gz", O_RDONLY);
+	if(fd < 0) {
+		fprintf(stderr, "Error opening: .server/archive5.tar.gz\n");
+		free(c);
+		free(m);
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+
+	cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+
+	unsigned char sendMB[(int)fileSize + 1];
+
+	int rd = read(fd, sendMB, (int)fileSize);
+	if(rd < 0) {
+		fprintf(stderr, "Error reading from: .server/archive5.tar.gz\n");	
+		free(c);
+		free(m);
+		free(buffer);
+		free(pName);
+		return 1;
+	}
+	close(fd);
+
+		// Send compressed project back to client.
+	write(sockfd, sendMB, (int)fileSize);
+	printf("Sent compressed .Manifest to client for evaluation.\n");
+	
+
+		// Remove compressed .Manifest
+	rmv = remove(".server/archive5.tar.gz");
+
+	free(c);
+	free(m);
+	free(buffer);
+	free(pName);
+	return 0;
+}
+
+
+int main(int argc, char *argv[] ) {
 
 	if(argc != 2) {
 		fprintf(stderr, "Invalid Number of Arguments.\nExpected a single Port #.\nReceived %d argument(s).\nUsage: ./WTFserver <PORT#>\n", argc - 1);
@@ -796,9 +1660,10 @@ int main(int argc, char** argv) {
 	int sockfd = -1;
 	int newsockfd = -1;
 	int clientAddrInfo = -1;
-
+	// Server address/port struct
+	struct sockaddr_in serverAddr;
 	
-		// Convert port string to int
+	// Convert port string to int
 	int port = atoi(argv[1]);
 	if( port == 0 ) {
 		fprintf(stderr, "Invalid Port.\n");
@@ -807,29 +1672,26 @@ int main(int argc, char** argv) {
 
 		// Create server socket
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if( sockfd == -1 ) {
-		fprintf(stderr, "Error creating server socket.\n");
+	if( sockfd < 0 ) {
+		perror("ERROR opening socket");
 		exit(1);
 	}
 
 	
-		// Server address/port struct
-	struct sockaddr_in serverAddr;
 
 		// Initialize server Addr
 	bzero((char*)&serverAddr, sizeof(serverAddr));	
 
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(port);
 	serverAddr.sin_addr.s_addr = INADDR_ANY;
-
+	serverAddr.sin_port = htons(port);
 
 		// Check return of binding
 	if( bind(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
 		fprintf(stderr, "Error while binding server.\n");
 		exit(1);
 	}
-
+	printf("Listening for connections..\n");
 	while(1) {
 
 		// Listen for client connections
@@ -877,7 +1739,6 @@ int main(int argc, char** argv) {
 		n = read(newsockfd, buffer, n);
 	}
 	
-
 		// Get the command given from client. (Create, history, rollback, etc...)
 		// 1 - create
 		// 2 - destroy
@@ -885,6 +1746,7 @@ int main(int argc, char** argv) {
 		// 4 - currentversion
 		// 5 - update
 		// 6 - upgrade
+		// 7 - commit
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -908,9 +1770,17 @@ int main(int argc, char** argv) {
 		char* projectName = getProjectName(buffer);
 		update(projectName, newsockfd);
 		free(projectName);
-	} else if(command = 6) {
+	} else if(command == 6) {
 		char* projectName = getProjectName(buffer);
 		upgrade(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 7) {
+		char* projectName = getProjectName(buffer);
+		commit(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 8) {
+		char* projectName = getProjectName(buffer);
+		push(projectName, newsockfd);
 		free(projectName);
 	} else {
 		;
