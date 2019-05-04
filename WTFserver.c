@@ -402,6 +402,30 @@ int create(char* projName, int sockfd) {
 	write(fd, "1", 1);
 	close(fd);
 
+		// Creates the version folder
+	char vPath[strlen(projName) + 19];
+	strcpy(vPath, ".server/");
+	strcat(vPath, projName);
+	strcat(vPath, "/.versions");
+	mkdir(vPath, 0700);
+		
+		// Created the history file
+	char hPath[strlen(projName) + 18];
+	strcpy(hPath, ".server/");
+	strcat(hPath, projName);
+	strcat(hPath, "/.history");
+
+	//create\n0
+	char writeH[16];
+	bzero(writeH, 16);
+	strcpy(writeH, "create\n");
+	strcat(writeH, "0\n\n");
+	fd = open(hPath, O_CREAT | O_RDWR, 0644);
+
+	write(fd, writeH, strlen(writeH));
+
+	close(fd);
+
 	char sendBuf[2];
 	sendBuf[0] = '1';
 	sendBuf[1] = '\n';
