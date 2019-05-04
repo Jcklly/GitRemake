@@ -26,6 +26,8 @@
 	// 6 - upgrade
 	// 7 - commit
 	// 8 - push
+	// 9 - history
+	// 10 - rollback
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -64,7 +66,13 @@ int getCommand(char* buf) {
 	} else if(strcmp(command, "push") == 0) {
 		printf("Received PUSH command from client.\n");
 		return 8;
-	} else {
+	} else if(strcmp(command, "history") == 0) {
+		printf("Received HISTORY command from client.\n");
+		return 9;
+	} else if(strcmp(command, "rollback") == 0) {
+		printf("Received ROLLBACK command from client.\n");
+		return 10;
+	}  else {
 		;
 	}
 	
@@ -394,6 +402,30 @@ int create(char* projName, int sockfd) {
 	write(fd, "1", 1);
 	close(fd);
 
+		// Creates the version folder
+	char vPath[strlen(projName) + 19];
+	strcpy(vPath, ".server/");
+	strcat(vPath, projName);
+	strcat(vPath, "/.versions");
+	mkdir(vPath, 0700);
+		
+		// Created the history file
+	char hPath[strlen(projName) + 18];
+	strcpy(hPath, ".server/");
+	strcat(hPath, projName);
+	strcat(hPath, "/.history");
+
+	//create\n0
+	char writeH[16];
+	bzero(writeH, 16);
+	strcpy(writeH, "create\n");
+	strcat(writeH, "0\n\n");
+	fd = open(hPath, O_CREAT | O_RDWR, 0644);
+
+	write(fd, writeH, strlen(writeH));
+
+	close(fd);
+
 	char sendBuf[2];
 	sendBuf[0] = '1';
 	sendBuf[1] = '\n';
@@ -404,12 +436,107 @@ int create(char* projName, int sockfd) {
 }
 
 
+	// Used for recurssion. Concats directory strings.
+char* concatDir(char* original, char* toAdd) {
+
+	int bufferSize = strlen(original) + strlen(toAdd) + 2;
+	
+	char* concat = malloc(bufferSize);
+	strcpy(concat, original);
+	strcat(concat, "/");
+	strcat(concat, toAdd);
+
+	return concat;
+}
+
+	// Used for rollback
+void rollbackDelete(char* pPath) {
+
+	int rmv = 0;
+	DIR *d = opendir(pPath);	
+	struct dirent* status = NULL;
+	char* newDir;	
+
+		if( d != NULL ) {
+
+			status = readdir(d);
+
+			do {
+			
+				char* fullDir = concatDir(pPath, status->d_name);	
+
+				if( status->d_type == DT_REG ) {
+					if(strcmp(status->d_name, ".history") != 0) {
+						rmv = remove(fullDir);
+					}
+				} else {
+					;
+				}
+
+					// Recurssive method for going through subdirectories	
+				if( status->d_type == DT_DIR ) {
+					if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) || (strcmp(status->d_name, ".versions") == 0) ) {
+						;
+					} else {
+						newDir = concatDir(pPath, status->d_name);
+						rollbackDelete(newDir);
+						rmv = rmdir(newDir);
+						free(newDir);
+					}
+				}
+				free(fullDir);				
+				status = readdir(d);
+			} while ( status != NULL );
+		closedir(d);
+		} 
+}
+
+	// Used for destroy
+void recursiveDelete(char* pPath) {
+
+	int rmv = 0;
+	DIR *d = opendir(pPath);	
+	struct dirent* status = NULL;
+	char* newDir;	
+
+		if( d != NULL ) {
+
+			status = readdir(d);
+
+			do {
+			
+				char* fullDir = concatDir(pPath, status->d_name);	
+
+				if( status->d_type == DT_REG ) {
+					rmv = remove(fullDir);
+				} else {
+					;
+				}
+
+					// Recurssive method for going through subdirectories	
+				if( status->d_type == DT_DIR ) {
+					if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+						;
+					} else {
+						newDir = concatDir(pPath, status->d_name);
+						recursiveDelete(newDir);
+						rmv = rmdir(newDir);
+						free(newDir);
+					}
+				}
+				free(fullDir);				
+				status = readdir(d);
+			} while ( status != NULL );
+		closedir(d);
+		} 
+}
 
 
+int destroy(char* projName, int sockfd, char* rec) {
 
-
-void destroy(char* projName, int sockfd) {
-	// Check if projName already exits.
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
 
@@ -418,15 +545,14 @@ void destroy(char* projName, int sockfd) {
 		status = readdir(d);
 
 		do {
-			if( status->d_type == DT_DIR ) {
+			if( status->d_type == DT_DIR ) { 
 				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
 					;
 				} else {
 						// Project already exists...
 					if(strcmp(status->d_name, projName) == 0) {
-						//remove project
-						
-						//
+						checkExist = 1;
+						break;
 					}
 				}
 			}
@@ -435,27 +561,23 @@ void destroy(char* projName, int sockfd) {
 		closedir(d);
 	}
 
-	// If here, then project does not already exists. Proceed.
-	char newDir[strlen(projName) + 21];
-	strcpy(newDir, "./.server/");
-	strcat(newDir, projName);
-	mkdir(newDir, 0700);
-
-	// Initialize .manifest inside new project directory.
-
-	strcat(newDir, "/.Manifest");
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
 	
-        int fd = open(newDir, O_CREAT | O_RDWR, 0644);
 
-        if(fd < 0) {
-                fprintf(stderr, "Configure never ran. Please run:\n./WTF configure <IP> <PORT>\n");
-                exit(1);
-        }
+	char pPath[strlen(projName) + 9];
+	strcpy(pPath, ".server/");
+	strcat(pPath, projName);
 
-	write(fd, "1", 1);
-
-	close(fd);
-
+	recursiveDelete(pPath);
+	int rmv = rmdir(pPath);
+	if(rmv < 0) {
+		fprintf(stderr, "Error removing project directory: %s\n.", pPath);
+		return 1;
+	}
 }
 
 
@@ -494,9 +616,29 @@ int checkout(char* projName, int sockfd) {
 		return 1;
 	}
 
+		// Creates the version folder
+	char vPath[strlen(projName) + 19];
+	strcpy(vPath, ".server/");
+	strcat(vPath, projName);
+	strcat(vPath, "/.versions");
+	mkdir(vPath, 0700);
+		
+		// Created the history file
+	char hPath[strlen(projName) + 18];
+	strcpy(hPath, ".server/");
+	strcat(hPath, projName);
+	strcat(hPath, "/.history");
+	
 
-	char command[strlen(projName) + 41];
-	strcpy(command, "tar -czf .server/archive.tar.gz .server/");
+
+	char command[strlen(projName) + strlen(vPath) + strlen(hPath) + 71];
+	bzero(command, (strlen(projName) + strlen(vPath) + strlen(hPath) + 71));
+	strcpy(command, "tar -czf .server/archive.tar.gz ");
+	strcat(command, "--exclude=\"");
+	strcat(command, vPath);
+	strcat(command, "\" --exclude=\"");
+	strcat(command, hPath);
+	strcat(command, "\" .server/");
 	strcat(command, projName);
 
 		// Tar project and send it over.
@@ -1650,6 +1792,74 @@ int push(char* projName, int sockfd) {
 }
 
 
+int history(char* projName, int sockfd) {
+
+		// Will be set to 1 if projName exists
+	int checkExist = 0;
+		// Check if projName already exits.
+	DIR *d = opendir(".server");		
+	struct dirent *status = NULL;
+
+	if(d != NULL) {
+		
+		status = readdir(d);
+
+		do {
+			if( status->d_type == DT_DIR ) { 
+				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
+					;
+				} else {
+						// Project already exists...
+					if(strcmp(status->d_name, projName) == 0) {
+						checkExist = 1;
+						break;
+					}
+				}
+			}
+			status = readdir(d);
+		} while(status != NULL);
+		closedir(d);
+	}
+
+		// Project existence check
+	if(checkExist == 0) {
+		fprintf(stderr, "Error: Project does not exists on the server.\n");
+		return 1;
+	}
+
+	
+	char historyPath[strlen(projName) + 18];
+	strcpy(historyPath, ".server/");
+	strcat(historyPath, projName);
+	strcat(historyPath, "/.history");
+
+	
+	int fd = open(historyPath, O_RDONLY);
+	
+	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
+	size_t fileSize = lseek(fd, (size_t)0, SEEK_END); 
+	lseek(fd, cp, SEEK_SET);
+	
+	char hBuf[(int)fileSize + 1];
+	bzero(hBuf, (int)fileSize + 1);
+
+	int rfd = read(fd, hBuf, (int)fileSize);
+	close(fd);
+	hBuf[(int)fileSize] = '\0';
+
+
+	write(sockfd, hBuf, strlen(hBuf));
+
+	return 0;
+}
+
+
+int rollback(char* projName, int sockfd) {
+
+	return 0;
+}
+
+
 int main(int argc, char *argv[] ) {
 
 	if(argc != 2) {
@@ -1747,6 +1957,9 @@ int main(int argc, char *argv[] ) {
 		// 5 - update
 		// 6 - upgrade
 		// 7 - commit
+		// 8 - push
+		// 9 - history
+		// 10 - rollback
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -1756,7 +1969,7 @@ int main(int argc, char *argv[] ) {
 		free(projectName);
 	} else if(command == 2) {
 		char* projectName = getProjectName(buffer);
-		destroy(projectName, newsockfd);
+		destroy(projectName, newsockfd, "");
 		free(projectName);
 	} else if(command == 3) {
 		char* projectName = getProjectName(buffer);
@@ -1781,6 +1994,14 @@ int main(int argc, char *argv[] ) {
 	} else if(command == 8) {
 		char* projectName = getProjectName(buffer);
 		push(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 9) {
+		char* projectName = getProjectName(buffer);
+		history(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 10) {
+		char* projectName = getProjectName(buffer);
+		rollback(projectName, newsockfd);
 		free(projectName);
 	} else {
 		;

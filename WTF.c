@@ -209,8 +209,11 @@ void destroy(char* projName) {
 	server = gethostbyname(getConfig(2));
    
 	if (server == NULL) {
-	  fprintf(stderr,"ERROR, no such host\n");
-	  exit(0);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+	  	fprintf(stderr,"ERROR, no such host\n");
+	  	exit(0);
 	}
    
 	bzero((char*)&serverAddr, sizeof(serverAddr));
@@ -230,10 +233,11 @@ void destroy(char* projName) {
 		// Send project name to server.
 		// destroy:<strlen(projName):projName>
 
-	int n = 0;
+	int n, i, recLength;
+	n = i = recLength = 0;
 	
-	char sendBuf[11 + strlen(projName)];
-	bzero(sendBuf, 11 + strlen(projName));
+	char sendBuf[12 + strlen(projName)];
+	bzero(sendBuf, 12 + strlen(projName));
 
 	char pnBytes[2];
 	snprintf(pnBytes, 10, "%d", strlen(projName));
@@ -243,18 +247,45 @@ void destroy(char* projName) {
 	strcat(sendBuf, ":");
 	strcat(sendBuf, projName);
 
-	
-	char totalL[10];
-	snprintf(totalL, 10, "%d", strlen(sendBuf));
-	
-//	printf("%s\n", totalL);
-
-//	n = write(sockfd, totalL, strlen(totalL));
 	n = write(sockfd, sendBuf, strlen(sendBuf));
 	
+        fd_set set;
+        struct timeval timeout;
 
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+        select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+        i = ioctl(sockfd, FIONREAD, &recLength);
+
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+                exit(1);
+        }
+
+        char recBuf[recLength+1];
+        bzero(recBuf, recLength+1);
+
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+	
+	if(recLength == 0) {
+		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+	
 	close(sockfd);
-
 	free(ipAddress);
 	free(portS);
 
@@ -2852,8 +2883,108 @@ void push(char* projName) {
 	
 }
 
+
+	// 
 void history(char* projName) {
 
+		// connect to server
+	int sockfd = -1;
+	int newsockfd = -1;
+	int addrInfo = -1;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1) {
+		fprintf(stderr, "Error creating server socket.\n");
+		exit(1);
+	}
+
+
+	struct hostent *server;
+	struct sockaddr_in serverAddr;	
+
+		// Obtain IP Address and Port from .configure file
+	char* ipAddress = getConfig(2);
+	char* portS = getConfig(1);
+	int portNum = atoi(portS);
+	server = gethostbyname(getConfig(2));
+   
+	if (server == NULL) {
+	  fprintf(stderr,"ERROR, no such host\n");
+	  exit(0);
+	}
+   
+	bzero((char*)&serverAddr, sizeof(serverAddr));
+	serverAddr.sin_family = AF_INET;
+	//serverAddr.sin_addr.s_addr = inet_addr(ipAddress);
+	bcopy((char *)server->h_addr, (char *)&serverAddr.sin_addr.s_addr, server->h_length);
+	serverAddr.sin_port = htons(portNum);
+
+
+	if( connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0 ) {
+		fprintf(stderr, "Error connecting client to server.\n");
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	} else {
+		printf("Established connection to server.\n");
+	}
+
+		// Send project name to server.
+		// update:  :<projName>
+	int n, i, recLength;
+	n = i = recLength = 0;
+	
+	char sendBuf[12 + strlen(projName)];
+	bzero(sendBuf, 12 + strlen(projName));
+	
+	char pnBytes[2];
+	snprintf(pnBytes, 10, "%d", strlen(projName));
+
+	strcpy(sendBuf, "history:");
+	strcat(sendBuf, pnBytes);
+	strcat(sendBuf, ":");
+	strcat(sendBuf, projName);
+
+	n = write(sockfd, sendBuf, strlen(sendBuf));
+	
+        fd_set set;
+        struct timeval timeout;
+
+        FD_ZERO(&set);
+        FD_SET(sockfd, &set);
+
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+        select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+
+        i = ioctl(sockfd, FIONREAD, &recLength);
+
+        if(i < 0) {
+                fprintf(stderr, "Error with ioctl().\n");
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+                exit(1);
+        }
+
+        char recBuf[recLength+1];
+        bzero(recBuf, recLength+1);
+
+	if(recLength > 0) {
+		n = read(sockfd, recBuf, recLength);
+	}
+	
+	if(recLength == 0) {
+		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		close(sockfd);
+		free(ipAddress);
+		free(portS);
+		exit(1);
+	}
+
+
+	printf("History received from the server:\n%s\n", recBuf);
 }
 
 
@@ -2989,6 +3120,18 @@ int main(int argc, char* argv[]) {
 			resolveIP();
 			rollback(argv[2], argv[3]);
 		}
+
+	} else if(strcmp(argv[1], "destroy") == 0) {
+
+		if(argc != 3) {
+
+			fprintf(stderr, "Invalid number of arguments for DESTROY.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			destroy(argv[2]);
+		}
+
 
 	} else {
 		printf("invalid command\n");
