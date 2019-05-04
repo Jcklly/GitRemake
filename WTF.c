@@ -2852,6 +2852,15 @@ void push(char* projName) {
 	
 }
 
+void history(char* projName) {
+
+}
+
+
+void rollback(char* projName, char* version) {
+
+}
+
 
 int main(int argc, char* argv[]) {
 
@@ -2959,6 +2968,28 @@ int main(int argc, char* argv[]) {
 			resolveIP();
 			push(argv[2]);
 		}
+	} else if(strcmp(argv[1], "history") == 0) {
+
+		if(argc != 3) {
+
+			fprintf(stderr, "Invalid number of arguments for HISTORY.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			history(argv[2]);
+		}
+
+	} else if(strcmp(argv[1], "rollback") == 0) {
+
+		if(argc != 4) {
+
+			fprintf(stderr, "Invalid number of arguments for ROLLBACK.\nExpected 1.\nReceived %d\n", argc-2);
+			exit(1);
+		} else {
+			resolveIP();
+			rollback(argv[2], argv[3]);
+		}
+
 	} else {
 		printf("invalid command\n");
 	}

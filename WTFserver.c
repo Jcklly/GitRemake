@@ -26,6 +26,8 @@
 	// 6 - upgrade
 	// 7 - commit
 	// 8 - push
+	// 9 - history
+	// 10 - rollback
 int getCommand(char* buf) {
 
 	int i = 0;
@@ -64,7 +66,13 @@ int getCommand(char* buf) {
 	} else if(strcmp(command, "push") == 0) {
 		printf("Received PUSH command from client.\n");
 		return 8;
-	} else {
+	} else if(strcmp(command, "history") == 0) {
+		printf("Received HISTORY command from client.\n");
+		return 9;
+	} else if(strcmp(command, "rollback") == 0) {
+		printf("Received ROLLBACK command from client.\n");
+		return 10;
+	}  else {
 		;
 	}
 	
@@ -1650,6 +1658,18 @@ int push(char* projName, int sockfd) {
 }
 
 
+int history(char* projName, int sockfd) {
+
+	return 0;
+}
+
+
+int rollback(char* projName, int sockfd) {
+
+	return 0;
+}
+
+
 int main(int argc, char *argv[] ) {
 
 	if(argc != 2) {
@@ -1747,6 +1767,9 @@ int main(int argc, char *argv[] ) {
 		// 5 - update
 		// 6 - upgrade
 		// 7 - commit
+		// 8 - push
+		// 9 - history
+		// 10 - rollback
 	int command = 0;
 	command = getCommand(buffer);
 
@@ -1781,6 +1804,14 @@ int main(int argc, char *argv[] ) {
 	} else if(command == 8) {
 		char* projectName = getProjectName(buffer);
 		push(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 9) {
+		char* projectName = getProjectName(buffer);
+		history(projectName, newsockfd);
+		free(projectName);
+	} else if(command == 10) {
+		char* projectName = getProjectName(buffer);
+		rollback(projectName, newsockfd);
 		free(projectName);
 	} else {
 		;
