@@ -1864,8 +1864,8 @@ int rollback(char* projName, int sockfd) {
 		}
 		++i;
 	}
-	
-	char * version=malloc(sizeof(char)*5);
+	//change to [3]
+	char * version=malloc(sizeof(char)*3);
 	memcpy(version, projName+i+1, strlen(projName));
 	//versionNum = projName+i;
 	projName[i] = '\0';
@@ -1919,10 +1919,20 @@ int rollback(char* projName, int sockfd) {
 		printf("directory does not exist\n");
 		return 0;
 	}
+	
 	rollbackDelete(projPath);//delete everything
-	char tarPath = malloc(sizeof(char)*100);
-	strcpy()
-	system("tar -xczf .server/test/.versions/1.tar.gz");
+	//tar -xvzf .server/test/.versions/1.tar.gz
+	
+	strcat(projPath, "/.versions/");
+	char* tarPath = malloc(sizeof(char)*strlen(projPath)+23);
+	strcpy(tarPath, "tar -xvzf ");
+	strcat(tarPath, projPath);
+	strcat(tarPath, version);
+	strcat(tarPath, ".tar.gz");
+	printf("%s\n", tarPath);
+	system(tarPath);
+	
+	write(sockfd, "Rolledback", 2);
 	return 0;
 }
 

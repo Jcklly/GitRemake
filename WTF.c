@@ -3081,7 +3081,7 @@ void rollback(char* projName, char* version) {
 	}
 	
 	if(recLength == 0) {
-		printf("Project name: `%s` doesn't exist on server.\n", projName);
+		printf("Rollback failed\n", projName);
 		close(sockfd);
 		free(ipAddress);
 		free(portS);
