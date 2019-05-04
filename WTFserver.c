@@ -526,9 +526,29 @@ int checkout(char* projName, int sockfd) {
 		return 1;
 	}
 
+		// Creates the version folder
+	char vPath[strlen(projName) + 19];
+	strcpy(vPath, ".server/");
+	strcat(vPath, projName);
+	strcat(vPath, "/.versions");
+	mkdir(vPath, 0700);
+		
+		// Created the history file
+	char hPath[strlen(projName) + 18];
+	strcpy(hPath, ".server/");
+	strcat(hPath, projName);
+	strcat(hPath, "/.history");
+	
 
-	char command[strlen(projName) + 41];
-	strcpy(command, "tar -czf .server/archive.tar.gz .server/");
+
+	char command[strlen(projName) + strlen(vPath) + strlen(hPath) + 71];
+	bzero(command, (strlen(projName) + strlen(vPath) + strlen(hPath) + 71));
+	strcpy(command, "tar -czf .server/archive.tar.gz ");
+	strcat(command, "--exclude=\"");
+	strcat(command, vPath);
+	strcat(command, "\" --exclude=\"");
+	strcat(command, hPath);
+	strcat(command, "\" .server/");
 	strcat(command, projName);
 
 		// Tar project and send it over.
