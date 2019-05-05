@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <pthread.h>
@@ -1853,6 +1854,14 @@ int history(char* projName, int sockfd) {
 	return 0;
 }
 
+int isfile(char *path) {
+   struct stat statbuf;
+
+   if (stat(path, &statbuf) == -1)
+      return 0;
+   else
+      return S_ISREG(statbuf.st_mode);
+}
 
 int rollback(char* projName, int sockfd) {
 	printf("rollback:%s\n", projName);
@@ -1882,7 +1891,6 @@ int rollback(char* projName, int sockfd) {
 	struct dirent *status = NULL;
 
 	if(d != NULL) {
-		
 		status = readdir(d);
 
 		do {
@@ -1902,12 +1910,12 @@ int rollback(char* projName, int sockfd) {
 		closedir(d);
 	}
 
-		// Project existence check
+	// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
 		return 1;
 	}
-	char* projPath = malloc( sizeof(char)*strlen(projName) + 18*sizeof(char) );
+	char* projPath = malloc( sizeof(char)*strlen(projName) + 23*sizeof(char) );
 	//strcat(projName);
 	strcpy(projPath, ".server/");
 	strcat(projPath, projName);
@@ -1920,18 +1928,53 @@ int rollback(char* projName, int sockfd) {
 		return 0;
 	}
 	
-	rollbackDelete(projPath);//delete everything
 	//tar -xvzf .server/test/.versions/1.tar.gz
 	
 	strcat(projPath, "/.versions/");
-	char* tarPath = malloc(sizeof(char)*strlen(projPath)+23);
-	strcpy(tarPath, "tar -xvzf ");
-	strcat(tarPath, projPath);
-	strcat(tarPath, version);
-	strcat(tarPath, ".tar.gz");
-	printf("%s\n", tarPath);
-	system(tarPath);
+	strcat(projPath, version);
+	strcat(projPath, ".tar.gz");
+	//printf("projPath:%s\n", projPath);
+	if(!isfile(projPath)){
+		printf("tar does not exist\n");
+		return 1;
+	}
 	
+	char* tarCommand = malloc(sizeof(char)*strlen(projPath)+11);
+	strcpy(tarCommand, "tar -xvzf ");
+	strcat(tarCommand, projPath);
+	//printf("tarCommand:%s\n", tarCommand);
+	rollbackDelete(projPath);//delete everything
+	system(tarCommand);//call tar function
+	free(projPath);
+	free(tarCommand);
+	
+	//delete all other version numbers
+	char tarPath[strlen(projName) +10];
+	strcpy(tarPath, ".server/");
+	strcat(tarPath, projName);
+	strcat(tarPath, "/.versions/");
+	//printf("pL:%s\n", tarPath);
+	char tarFile[strlen(tarPath)+12];
+	strcpy(tarFile, tarPath);
+	
+	char numberStr[3];
+	sprintf (numberStr, "%d", ++versionNum);
+	strcat(tarFile, numberStr);
+	strcat(tarFile, ".tar.gz");
+	
+	while(isfile(tarFile)){
+		//printf("file:%s\n", tarFile);
+		int rmv = remove(tarFile);
+		//
+		bzero(tarFile, strlen(tarFile));
+		
+		strcpy(tarFile, tarPath);
+		
+		sprintf (numberStr, "%d", ++versionNum);
+		
+		strcat(tarFile, numberStr);
+		strcat(tarFile, ".tar.gz");
+	}
 	write(sockfd, "Rolledback", 2);
 	return 0;
 }
@@ -1981,111 +2024,109 @@ int main(int argc, char *argv[] ) {
 	printf("Listening for connections..\n");
 	while(1) {
 
-		// Listen for client connections
-	listen(sockfd, 25);
+			// Listen for client connections
+		listen(sockfd, 25);
 
-	
-		// Struct for client
-	struct sockaddr_in clientAddr;
-	
-	clientAddrInfo = sizeof(clientAddr);
-	//client connection
-	//newsockfd is client name, make a data structure for all clients
-	//need to loop somehow for multi threading
-	newsockfd = accept(sockfd, (struct sockaddr*)&clientAddr, &clientAddrInfo);
-	if(newsockfd >= 0) {
-		printf("Successfully connected to a client.\n");
+		
+			// Struct for client
+		struct sockaddr_in clientAddr;
+		
+		clientAddrInfo = sizeof(clientAddr);
+		//client connection
+		//newsockfd is client name, make a data structure for all clients
+		//need to loop somehow for multi threading
+		newsockfd = accept(sockfd, (struct sockaddr*)&clientAddr, &clientAddrInfo);
+		if(newsockfd >= 0) {
+			printf("Successfully connected to a client.\n");
+		}
+
+		int n, i, j;
+		i = n = j = 0;
+
+
+		fd_set set;
+		struct timeval timeout;
+
+		FD_ZERO(&set);
+		FD_SET(newsockfd, &set);
+
+		timeout.tv_sec = 5;
+		timeout.tv_usec = 0;
+		//ensures something is bring read from client
+		select(FD_SETSIZE, &set, NULL, NULL, &timeout);
+		//n is length of buffer
+		i = ioctl(newsockfd, FIONREAD, &n);
+		
+		if(i < 0) {
+			fprintf(stderr, "Error with ioctl().\n");
+			exit(1);
+		}
+		
+		char buffer[n+1];
+		bzero(buffer, n+1);
+
+		if(n > 0) {
+			n = read(newsockfd, buffer, n);
+		}
+		
+			// Get the command given from client. (Create, history, rollback, etc...)
+			// 1 - create
+			// 2 - destroy
+			// 3 - checkout
+			// 4 - currentversion
+			// 5 - update
+			// 6 - upgrade
+			// 7 - commit
+			// 8 - push
+			// 9 - history
+			// 10 - rollback
+		int command = 0;
+		command = getCommand(buffer);
+
+		if(command == 1) {
+			char* projectName = getProjectName(buffer);
+			create(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 2) {
+			char* projectName = getProjectName(buffer);
+			destroy(projectName, newsockfd, "");
+			free(projectName);
+		} else if(command == 3) {
+			char* projectName = getProjectName(buffer);
+			checkout(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 4) {
+			char* projectName = getProjectName(buffer);
+			currentversion(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 5) {
+			char* projectName = getProjectName(buffer);
+			update(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 6) {
+			char* projectName = getProjectName(buffer);
+			upgrade(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 7) {
+			char* projectName = getProjectName(buffer);
+			commit(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 8) {
+			char* projectName = getProjectName(buffer);
+			push(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 9) {
+			char* projectName = getProjectName(buffer);
+			history(projectName, newsockfd);
+			free(projectName);
+		} else if(command == 10) {
+			char* projectName = getProjectName(buffer);
+			rollback(projectName, newsockfd);
+			free(projectName);
+		} else {
+		
+		}
 	}
-
-	int n, i, j;
-	i = n = j = 0;
-
-
-	fd_set set;
-	struct timeval timeout;
-
-	FD_ZERO(&set);
-	FD_SET(newsockfd, &set);
-
-	timeout.tv_sec = 5;
-	timeout.tv_usec = 0;
-	//ensures something is bring read from client
-	select(FD_SETSIZE, &set, NULL, NULL, &timeout);
-	//n is length of buffer
-	i = ioctl(newsockfd, FIONREAD, &n);
-	
-	if(i < 0) {
-		fprintf(stderr, "Error with ioctl().\n");
-		exit(1);
-	}
-	
-	char buffer[n+1];
-	bzero(buffer, n+1);
-
-	if(n > 0) {
-		n = read(newsockfd, buffer, n);
-	}
-	
-		// Get the command given from client. (Create, history, rollback, etc...)
-		// 1 - create
-		// 2 - destroy
-		// 3 - checkout
-		// 4 - currentversion
-		// 5 - update
-		// 6 - upgrade
-		// 7 - commit
-		// 8 - push
-		// 9 - history
-		// 10 - rollback
-	int command = 0;
-	command = getCommand(buffer);
-
-	if(command == 1) {
-		char* projectName = getProjectName(buffer);
-		create(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 2) {
-		char* projectName = getProjectName(buffer);
-		destroy(projectName, newsockfd, "");
-		free(projectName);
-	} else if(command == 3) {
-		char* projectName = getProjectName(buffer);
-		checkout(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 4) {
-		char* projectName = getProjectName(buffer);
-		currentversion(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 5) {
-		char* projectName = getProjectName(buffer);
-		update(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 6) {
-		char* projectName = getProjectName(buffer);
-		upgrade(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 7) {
-		char* projectName = getProjectName(buffer);
-		commit(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 8) {
-		char* projectName = getProjectName(buffer);
-		push(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 9) {
-		char* projectName = getProjectName(buffer);
-		history(projectName, newsockfd);
-		free(projectName);
-	} else if(command == 10) {
-		char* projectName = getProjectName(buffer);
-		rollback(projectName, newsockfd);
-		free(projectName);
-	} else {
-		;
-	}
-	}
-
-///////////////////////////////
 
 	close(newsockfd);
 	close(sockfd);
