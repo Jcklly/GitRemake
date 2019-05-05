@@ -6,3 +6,26 @@ push
 U 2 test/file6.txt fc645b58da764b89a6aa0ad4174ad37191e7afb049ccdfc0cafbeb993f5cc363
 A 2 test/testfile.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
+push
+1
+A 2 test/okay.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+push
+2
+A 2 test/last.txt adfb866abb69f8d0475d7d6dc4dff56c4651e96b26b435475b37f356dfa9e85d
+
+rollback
+2
+
+rollback
+2
+
+rollback
+2
+
+rollback
+2
+
+rollback
+2
+

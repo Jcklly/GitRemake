@@ -217,6 +217,10 @@ void parseManifest(files* f, char* projName) {
 	++line;
 	++i;	
 
+	if(strlen(buffer)-i <= 0)  {
+		return;
+	}
+
 	char newTemp[strlen(buffer)-i];
 	memcpy(newTemp, buffer+i, strlen(buffer)-i);
 
@@ -232,7 +236,7 @@ void parseManifest(files* f, char* projName) {
 		++i;
 	}
 
-	char* tokenized[numElements];
+	char* tokenized[numElements+1];
 	i = 0;
 	tokenized[i] = strtok(newTemp, " ,");
 	
@@ -393,14 +397,14 @@ int create(char* projName, int sockfd) {
 
 	strcat(newDir, "/.Manifest");
 	
-        int fd = open(newDir, O_CREAT | O_RDWR, 0644);
+        int fd = open(newDir, O_CREAT | O_RDWR | O_APPEND, 0644);
 
         if(fd < 0) {
                 fprintf(stderr, "Configure never ran. Please run:\n./WTF configure <IP> <PORT>\n");
                 return 1;
         }
 
-	write(fd, "1", 1);
+	write(fd, "1\n", 2);
 	close(fd);
 
 		// Creates the version folder
@@ -1111,6 +1115,7 @@ int commit(char* projName, int sockfd) {
 	}
 	close(fd);
 
+
 		// Send compressed project back to client.
 	write(sockfd, buffer, (int)fileSize);
 	printf("Sent compressed .Manifest to client for evaluation.\n");
@@ -1150,6 +1155,12 @@ int commit(char* projName, int sockfd) {
 	if(n > 0) {
 		n = read(sockfd, fileBuffer, n);
 	}
+
+	if(n == 0) {
+		fprintf(stdout, "Client needs to update+upgrade before commit+push.\n");
+		free(fileBuffer);
+		return 1;
+	}
 	
 	printf("Received compressed .commit file from client. Storing as active commit.\n");
 
@@ -1165,6 +1176,7 @@ int commit(char* projName, int sockfd) {
 	sys = system(untar);
 	if(sys < 0) {
 		fprintf(stderr, "Error un-tarring compressed .commit file.\n");
+		free(fileBuffer);
 		return 1;
 	}
 
@@ -1864,7 +1876,6 @@ int isfile(char *path) {
 }
 
 int rollback(char* projName, int sockfd) {
-	printf("rollback:%s\n", projName);
 	
 	int i = 0;
 	while(i < strlen(projName)) {
@@ -1873,16 +1884,13 @@ int rollback(char* projName, int sockfd) {
 		}
 		++i;
 	}
-	//change to [3]
-	char * version=malloc(sizeof(char)*3);
+
+	char version[5];
+	bzero(version, 5);
 	memcpy(version, projName+i+1, strlen(projName));
-	//versionNum = projName+i;
 	projName[i] = '\0';
 	
-	//printf("projName:%s\n", projName);
-	//printf("verson:%s\n", version);
 	int versionNum = atoi(version);
-	//printf("verson:%d\n", versionNum);
 	
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
@@ -1910,17 +1918,15 @@ int rollback(char* projName, int sockfd) {
 		closedir(d);
 	}
 
-	// Project existence check
+		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
 		return 1;
 	}
-	char* projPath = malloc( sizeof(char)*strlen(projName) + 23*sizeof(char) );
-	//strcat(projName);
+	char projPath[strlen(projName) + 40];
+	bzero(projPath, (strlen(projName) + 40));
 	strcpy(projPath, ".server/");
 	strcat(projPath, projName);
-	//strcat(projPath, "/.versions");
-	//printf("path:%s\n", projPath);
 	
 	d = opendir(projPath);
 	if(d == NULL) {
@@ -1928,7 +1934,7 @@ int rollback(char* projName, int sockfd) {
 		return 0;
 	}
 	
-	//tar -xvzf .server/test/.versions/1.tar.gz
+	//tar -xzf .server/test/.versions/1.tar.gz
 	
 	strcat(projPath, "/.versions/");
 	strcat(projPath, version);
@@ -1939,21 +1945,27 @@ int rollback(char* projName, int sockfd) {
 		return 1;
 	}
 	
-	char* tarCommand = malloc(sizeof(char)*strlen(projPath)+11);
-	strcpy(tarCommand, "tar -xvzf ");
+	char tarCommand[strlen(projPath)+11];
+	bzero(tarCommand, (strlen(projPath) + 11));
+	strcpy(tarCommand, "tar -xzf ");
 	strcat(tarCommand, projPath);
-	//printf("tarCommand:%s\n", tarCommand);
-	rollbackDelete(projPath);//delete everything
-	system(tarCommand);//call tar function
-	free(projPath);
-	free(tarCommand);
+
+		// Delete everything except the version and history folder/file
+	rollbackDelete(projPath);
+
+	int sys =  system(tarCommand);
+	if(sys < 0) {
+		fprintf(stderr, "Error on System() call.\n");
+		return 1;
+	}
 	
-	//delete all other version numbers
-	char tarPath[strlen(projName) +10];
+		//delete all other version numbers
+	char tarPath[strlen(projName) + 20];
+	bzero(tarPath, (strlen(projName) + 20));
 	strcpy(tarPath, ".server/");
 	strcat(tarPath, projName);
 	strcat(tarPath, "/.versions/");
-	//printf("pL:%s\n", tarPath);
+
 	char tarFile[strlen(tarPath)+12];
 	strcpy(tarFile, tarPath);
 	
@@ -1963,7 +1975,6 @@ int rollback(char* projName, int sockfd) {
 	strcat(tarFile, ".tar.gz");
 	
 	while(isfile(tarFile)){
-		//printf("file:%s\n", tarFile);
 		int rmv = remove(tarFile);
 		//
 		bzero(tarFile, strlen(tarFile));
@@ -1976,6 +1987,33 @@ int rollback(char* projName, int sockfd) {
 		strcat(tarFile, ".tar.gz");
 	}
 	write(sockfd, "Rolledback", 2);
+	
+	fprintf(stdout, "Successfully rolled back to version: %s.\n", version);
+
+		// Append rollback to history.
+
+	char historyPath[strlen(projName) + 18];
+	strcpy(historyPath, ".server/");
+	strcat(historyPath, projName);
+	strcat(historyPath, "/.history");
+
+	// rollback\n5\n\n
+	char rMessage[20];
+	bzero(rMessage, 20);
+
+	strcpy(rMessage, "rollback\n");
+	strcat(rMessage, version);
+	strcat(rMessage, "\n\n");
+
+	int fd = open(historyPath, O_APPEND | O_RDWR);
+	if(fd < 0) {
+		fprintf(stderr, "Error appending rollback message to .history. File not found.\n");
+		return 1;
+	}
+	write(fd, rMessage, strlen(rMessage));
+	close(fd);
+
+
 	return 0;
 }
 

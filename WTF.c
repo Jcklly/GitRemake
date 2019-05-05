@@ -358,8 +358,6 @@ void parseManifest(files* f, char* projName, char* fileName) {
 	strcpy(pathManifest, projName);
 	strcat(pathManifest, "/.Manifest");
 
-
-
 	int fd = open(pathManifest, O_RDONLY);		
 	if(fd < 0) {
 		printf("Error opening file: %s\n", fileName);
@@ -385,14 +383,14 @@ void parseManifest(files* f, char* projName, char* fileName) {
 	int numElements, line, i;
 	i = numElements = line = 0;
 	
-//	printf("%s\n", buffer);
+//	printf("size:\n------- %s\n---------\n", buffer);
 
-	while(buffer[i] != '\n') {
+	while(buffer[i] != '\n' && i <= (int)fileSize) {
 		++i;
 	}	
 
+
 		// Set first file to .Manifest in struct
-	
 	strcpy(f[line].file_name, ".Manifest");
 	strcpy(f[line].file_hash, "NULL");
 	char temp[i+1];
@@ -403,12 +401,17 @@ void parseManifest(files* f, char* projName, char* fileName) {
 	++line;
 	++i;	
 
+		// Checks if no other file in .Manifest
+	if((strlen(buffer)-i) <= 0) {
+//		printf("just manifest!\n");
+		return;
+	}
+
 	char newTemp[strlen(buffer)-i + 1];
-	bzero(newTemp, strlen(buffer)-i+1);
-	memcpy(newTemp, buffer+i, strlen(buffer)-i);
+	bzero(newTemp, (strlen(buffer)-i+1));
+	memcpy(newTemp, buffer+i, strlen(buffer)-i-1);
 	newTemp[strlen(buffer)-i] = '\0';
 
-//	printf("%s\n", newTemp);
 
 	i = 0;
 	while(i < strlen(newTemp)) {
@@ -421,14 +424,16 @@ void parseManifest(files* f, char* projName, char* fileName) {
 		}
 		++i;
 	}
+//	printf("%s\n", newTemp);
 	
-	char* tokenized[numElements];
+	char* tokenized[numElements+1];
 	i = 0;
 	tokenized[i] = strtok(newTemp, " ,");
 	
 	while(tokenized[i] != NULL) {
 		tokenized[++i] = strtok(NULL, " ,");
 	}
+
 
 /*	i = 0;
 	while(i < numElements) {
@@ -557,6 +562,7 @@ int parseUpdate(uFiles *f, char* projName, int flag) {
 	// 2 -- remove
 void add_or_remove(int flag, char* projName, char* fileName) {
 
+
 		// Will get set to 1 if it finds the projName
 	int check = 0;
 
@@ -605,8 +611,7 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 		}
 
 
-		// create buffer that will be added to manifest.
-		
+			// create buffer that will be added to manifest.
 		int fd = open(fileName, O_RDONLY);		
 		if(fd < 0) {
 			printf("Error opening file: %s\n", fileName);
@@ -642,7 +647,8 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 	
 
 			// Combine everything to get string to add to .Manifest.
-		char toAdd[strlen(hashString) + strlen(fileName) + 5];
+		char toAdd[strlen(hashString) + strlen(fileName) + 10];
+		bzero(toAdd, (strlen(hashString) + strlen(fileName) + 10) );
 		strcpy(toAdd, "1 ");
 		strcat(toAdd, fileName);
 		strcat(toAdd, " ");
@@ -680,6 +686,7 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 			}
 			++i;
 		}	
+
 			// parse .Manifest into array of structs.
 		files *f = malloc(numLines*sizeof(*f));
 		parseManifest(f, projName, fileName);
@@ -1087,6 +1094,16 @@ void configure(char* port, char* addr) {
 	//printf("%s\n",addr);
 	int rmv = remove(".configure");
 
+	int portNum = atoi(port);
+
+	if( (portNum < 8000) || (portNum > 65535) ) {
+			// Ensure port is between proper range.
+		fprintf(stderr, "Invalid port number. Please make sure the range of the port is between 8000-65535.\n");	
+		exit(1);
+
+	}
+
+
 	int length = strlen(port) + strlen(addr) + 2;
 	char str[length];
 
@@ -1333,6 +1350,8 @@ void update(char* projName) {
 	parseManifest(s, ".", "Server's .Manifest");
 	parseManifest(c, projName, "Client's .Manifest");
 
+	printf("s: %s : %s\n", c[1].file_name, s[1].file_name);
+
 		// Check UMAD cases
 	int k, UMAD;
 	i = k = 1;
@@ -1342,7 +1361,7 @@ void update(char* projName) {
 	bzero(updateBuf, (strlen(projName) + 9));
 	strcpy(updateBuf, projName);
 	strcat(updateBuf, "/.Update");
-	
+		
 	rmv = remove(updateBuf);
 
 	fd = open(updateBuf, O_CREAT | O_RDWR, 0644);
@@ -2134,7 +2153,6 @@ void commit(char* projName) {
 		}
 		++i;
 	}	
-	
 
 		// Now get the number of lines from the client's .Manifest
 	char manifest_c[strlen(projName) + 11];
@@ -2177,6 +2195,7 @@ void commit(char* projName) {
 		++i;
 	}	
 
+
 		// Parse manifest from server and client into structs to compare.
 	files *s = malloc(numLines_s * sizeof(*s));
 	files *c = malloc(numLines_c * sizeof(*c));
@@ -2184,7 +2203,6 @@ void commit(char* projName) {
 
 	parseManifest(s, ".", "Server's .Manifest");
 	parseManifest(c, projName, "Client's .Manifest");
-
 
 
 		// Check and make sure manifest versions match...
@@ -2337,6 +2355,8 @@ void commit(char* projName) {
 			
 					write(fd, toAdd, strlen(toAdd));
 
+					printf("%s\n", toAdd);
+
 					close(fd);
 					check = 1;
 				}
@@ -2369,6 +2389,8 @@ void commit(char* projName) {
 		
 				write(fd, toAdd, strlen(toAdd));
 
+				printf("%s\n", toAdd);
+		
 				close(fd);
 				check = 1;
 
@@ -2417,6 +2439,8 @@ void commit(char* projName) {
 				strcat(toAdd, "\n");
 		
 				write(fd, toAdd, strlen(toAdd));
+				
+				printf("%s\n", toAdd);
 
 				close(fd);
 				check = 1;
