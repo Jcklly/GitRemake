@@ -97,6 +97,8 @@ void create(char* projName) {
    
 	if (server == NULL) {
 	  fprintf(stderr,"ERROR, no such host\n");
+	  free(portS);
+	  free(ipAddress);
 	  exit(0);
 	}
    
@@ -209,7 +211,6 @@ void destroy(char* projName) {
 	server = gethostbyname(getConfig(2));
    
 	if (server == NULL) {
-		close(sockfd);
 		free(ipAddress);
 		free(portS);
 	  	fprintf(stderr,"ERROR, no such host\n");
@@ -866,6 +867,8 @@ void checkout(char* projName) {
    
 	if (server == NULL) {
 	  fprintf(stderr,"ERROR, no such host\n");
+	  free(ipAddress);
+	  free(portS);
 	  exit(0);
 	}
    
@@ -1006,6 +1009,8 @@ void currentVersion(char* projName) {
    
 	if (server == NULL) {
 	  fprintf(stderr,"ERROR, no such host\n");
+	  free(ipAddress);
+	  free(portS);
 	  exit(0);
 	}
    
@@ -1151,6 +1156,8 @@ void update(char* projName) {
    
 	if (server == NULL) {
 	  fprintf(stderr,"ERROR, no such host\n");
+	  free(ipAddress);
+	  free(portS);
 	  exit(0);
 	}
    
@@ -1641,6 +1648,8 @@ void upgrade(char* projName) {
    
 	if (server == NULL) {
 	  fprintf(stderr,"ERROR, no such host\n");
+	  free(ipAddress);
+	  free(portS);
 	  exit(0);
 	}
    
@@ -2006,6 +2015,8 @@ void commit(char* projName) {
    
 	if (server == NULL) {
 	  fprintf(stderr,"ERROR, no such host\n");
+	  free(ipAddress);
+	  free(portS);
 	  exit(0);
 	}
    
@@ -2656,6 +2667,8 @@ void push(char* projName) {
    
 	if (server == NULL) {
 	  fprintf(stderr,"ERROR, no such host\n");
+	  free(ipAddress);
+	  free(portS);
 	  exit(0);
 	}
    
@@ -2933,8 +2946,10 @@ void history(char* projName) {
 	server = gethostbyname(getConfig(2));
    
 	if (server == NULL) {
-	  fprintf(stderr,"ERROR, no such host\n");
-	  exit(0);
+		fprintf(stderr,"ERROR, no such host\n");
+		free(ipAddress);
+		free(portS);
+	 	exit(0);
 	}
    
 	bzero((char*)&serverAddr, sizeof(serverAddr));
