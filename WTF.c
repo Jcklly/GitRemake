@@ -610,8 +610,13 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 			exit(1);
 		}
 
+<<<<<<< HEAD
 
 			// create buffer that will be added to manifest.
+=======
+		// create buffer that will be added to manifest.
+		
+>>>>>>> d0e9c65a4f35ed5d90c32ad7d209ba48d9e43aaf
 		int fd = open(fileName, O_RDONLY);		
 		if(fd < 0) {
 			printf("Error opening file: %s\n", fileName);
