@@ -604,7 +604,6 @@ void add_or_remove(int flag, char* projName, char* fileName) {
 			exit(1);
 		}
 
-
 		// create buffer that will be added to manifest.
 		
 		int fd = open(fileName, O_RDONLY);		

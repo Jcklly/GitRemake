@@ -18,6 +18,10 @@
 #include <openssl/sha.h>
 #include "helper.h"
 
+struct args {
+    char* str;
+    int num;
+};
 	// Gets the command given from the protocol.
 	// 1 - create
 	// 2 - destroy
@@ -356,8 +360,9 @@ int parseUpdate(uFiles *f, char* projName, int flag) {
 }
 
 	// 3.6 -- create
-int create(char* projName, int sockfd) {
-
+void *create(void *input) {
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 		// Check if projName already exits.
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
@@ -374,7 +379,7 @@ int create(char* projName, int sockfd) {
 						// Project already exists...
 					if(strcmp(status->d_name, projName) == 0) {
 						fprintf(stderr, "Project: '%s' already exists on server.\n", projName);
-						return 1;
+						return;
 					}
 				}
 			}
@@ -382,7 +387,7 @@ int create(char* projName, int sockfd) {
 		} while(status != NULL);
 		closedir(d);
 	}
-
+	
 	// If here, then project does not already exists. Proceed.
 	char newDir[strlen(projName) + 21];
 	strcpy(newDir, "./.server/");
@@ -397,7 +402,7 @@ int create(char* projName, int sockfd) {
 
         if(fd < 0) {
                 fprintf(stderr, "Configure never ran. Please run:\n./WTF configure <IP> <PORT>\n");
-                return 1;
+                return;
         }
 
 	write(fd, "1", 1);
@@ -415,7 +420,7 @@ int create(char* projName, int sockfd) {
 	strcpy(hPath, ".server/");
 	strcat(hPath, projName);
 	strcat(hPath, "/.history");
-
+	///*
 	//create\n0
 	char writeH[16];
 	bzero(writeH, 16);
@@ -424,18 +429,16 @@ int create(char* projName, int sockfd) {
 	fd = open(hPath, O_CREAT | O_RDWR, 0644);
 
 	write(fd, writeH, strlen(writeH));
-
+	
 	close(fd);
-
+	
 	char sendBuf[2];
 	sendBuf[0] = '1';
 	sendBuf[1] = '\n';
 
 	write(sockfd, sendBuf, 2);
-
-	return 0;
+	return;
 }
-
 
 	// Used for recurssion. Concats directory strings.
 char* concatDir(char* original, char* toAdd) {
@@ -533,8 +536,9 @@ void recursiveDelete(char* pPath) {
 }
 
 
-int destroy(char* projName, int sockfd, char* rec) {
-
+void *destroy(void *input) {
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
@@ -565,7 +569,7 @@ int destroy(char* projName, int sockfd, char* rec) {
 		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 	
 
@@ -577,13 +581,15 @@ int destroy(char* projName, int sockfd, char* rec) {
 	int rmv = rmdir(pPath);
 	if(rmv < 0) {
 		fprintf(stderr, "Error removing project directory: %s\n.", pPath);
-		return 1;
+		return;
 	}
 }
 
 
-int checkout(char* projName, int sockfd) {
-
+void *checkout(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
@@ -614,7 +620,7 @@ int checkout(char* projName, int sockfd) {
 		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 
 		// Creates the version folder
@@ -646,13 +652,13 @@ int checkout(char* projName, int sockfd) {
 	int sys = system(command);
 	if(sys < 0) {
 		fprintf(stderr, "Error compressing project: %s\n", projName);
-		return 1;
+		return;
 	}
 
 	int fd = open(".server/archive.tar.gz", O_RDONLY);
 	if(fd < 0) {
 		fprintf(stderr, "Error opening: .server/archive.tar.gz\n");
-		return 1;
+		return;
 	}
 
 	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
@@ -664,7 +670,7 @@ int checkout(char* projName, int sockfd) {
 	int rd = read(fd, buffer, (int)fileSize);
 	if(rd < 0) {
 		fprintf(stderr, "Error reading from: .server/archive.tar.gz\n");	
-		return 1;
+		return;
 	}
 	close(fd);
 
@@ -676,14 +682,15 @@ int checkout(char* projName, int sockfd) {
 	int rmv = remove(".server/archive.tar.gz");
 	if(rmv < 0) {
 		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
-		return 1;
+		return;
 	}
-	return 0;
+	return;
 }
 
-
-int currentversion(char* projName, int sockfd) {
-
+void *currentversion(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
@@ -714,7 +721,7 @@ int currentversion(char* projName, int sockfd) {
 		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 
 		// Project exists, parse and send manifest info to client
@@ -727,7 +734,7 @@ int currentversion(char* projName, int sockfd) {
 	int fd = open(pathManifest, O_RDONLY);
 	if(fd < 0) {
 		fprintf(stderr, "Error opening file: %s\n", pathManifest);
-		return 1;
+		return;
 	}
 
 	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);
@@ -739,7 +746,7 @@ int currentversion(char* projName, int sockfd) {
 	int rfd = read(fd, manifestBuf, (int)fileSize);
 	if(rfd < 0) {
 		fprintf(stderr, "error reading from file: %s\n", pathManifest);
-		return 1;	
+		return;	
 	}
 	close(fd);
 
@@ -785,13 +792,14 @@ int currentversion(char* projName, int sockfd) {
 	printf("Current versions successfully sent to the client.\n");
 
 	free(f);
-	return 0;	
+	return;	
 
 }
 
- 
-int update(char* projName, int sockfd) {
-
+void *update(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
@@ -822,7 +830,7 @@ int update(char* projName, int sockfd) {
 		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 
 
@@ -836,13 +844,13 @@ int update(char* projName, int sockfd) {
 	int sys = system(command);
 	if(sys < 0) {
 		fprintf(stderr, "Error compressing `.Manifest` in project: %s\n", projName);
-		return 1;
+		return;
 	}
 
 	int fd = open(".server/archive.tar.gz", O_RDONLY);
 	if(fd < 0) {
 		fprintf(stderr, "Error opening: .server/archive.tar.gz\n");
-		return 1;
+		return;
 	}
 
 	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
@@ -854,7 +862,7 @@ int update(char* projName, int sockfd) {
 	int rd = read(fd, buffer, (int)fileSize);
 	if(rd < 0) {
 		fprintf(stderr, "Error reading from: .server/archive.tar.gz\n");	
-		return 1;
+		return;
 	}
 	close(fd);
 
@@ -866,15 +874,17 @@ int update(char* projName, int sockfd) {
 	int rmv = remove(".server/archive.tar.gz");
 	if(rmv < 0) {
 		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
-		return 1;
+		return;
 	}
 
-	return 0;	
+	return;	
 }
 
 
-int upgrade(char* projName, int sockfd) {
-
+void *upgrade(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
@@ -905,7 +915,7 @@ int upgrade(char* projName, int sockfd) {
 		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 
 	int n = 0;
@@ -924,7 +934,7 @@ int upgrade(char* projName, int sockfd) {
 	
 	if(i < 0) {
 		fprintf(stderr, "Error with ioctl().\n");
-		return 1;
+		return;
 	}
 	
 	char *buffer = malloc((n+1)*sizeof(char)); //[n+1];
@@ -936,7 +946,7 @@ int upgrade(char* projName, int sockfd) {
 	
 	if(strcmp(buffer, "") == 0) {
 		fprintf(stdout, "Client's project up-to-date. No need to continue. Exiting...\n");
-		return 1;
+		return;
 	}
 
 
@@ -1001,14 +1011,14 @@ int upgrade(char* projName, int sockfd) {
 	if(sys < 0) {
 		fprintf(stderr, "Error compressing archive. Most likely a file that is suppose to be tar'd does not exists.\n");
 		free(buffer);
-		return 1;
+		return;
 	}
 
 	int fd = open(".server/archive1.tar.gz", O_RDONLY);
 	if(fd < 0) {
 		fprintf(stderr, "Error opening: .server/archive1.tar.gz\n");
 		free(buffer);
-		return 1;
+		return;
 	}
 
 	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
@@ -1021,7 +1031,7 @@ int upgrade(char* projName, int sockfd) {
 	if(rd < 0) {
 		fprintf(stderr, "Error reading from: .server/archive1.tar.gz\n");	
 		free(buffer);
-		return 1;
+		return;
 	}
 	close(fd);
 	sendBuf[(int)fileSize] = '\0';
@@ -1035,16 +1045,17 @@ int upgrade(char* projName, int sockfd) {
 	if(rmv < 0) {
 		fprintf(stderr, "Error removing: .server/archive1.tar.gz\n");
 		free(buffer);
-		return 1;
+		return;
 	}
 
 	free(buffer);
-	return 0;
+	return;
 }
 
-
-int commit(char* projName, int sockfd) {
-
+void *commit(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
@@ -1075,7 +1086,7 @@ int commit(char* projName, int sockfd) {
 		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 
 	char command[strlen(projName) + 52];
@@ -1089,13 +1100,13 @@ int commit(char* projName, int sockfd) {
 	int sys = system(command);
 	if(sys < 0) {
 		fprintf(stderr, "Error compressing `.Manifest` in project: %s\n", projName);
-		return 1;
+		return;
 	}
 
 	int fd = open(".server/archive.tar.gz", O_RDONLY);
 	if(fd < 0) {
 		fprintf(stderr, "Error opening: .server/archive.tar.gz\n");
-		return 1;
+		return;
 	}
 
 	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
@@ -1107,7 +1118,7 @@ int commit(char* projName, int sockfd) {
 	int rd = read(fd, buffer, (int)fileSize);
 	if(rd < 0) {
 		fprintf(stderr, "Error reading from: .server/archive.tar.gz\n");	
-		return 1;
+		return;
 	}
 	close(fd);
 
@@ -1119,7 +1130,7 @@ int commit(char* projName, int sockfd) {
 	int rmv = remove(".server/archive.tar.gz");
 	if(rmv < 0) {
 		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
-		return 1;
+		return;
 	}
 
 
@@ -1141,7 +1152,7 @@ int commit(char* projName, int sockfd) {
 	
 	if(i < 0) {
 		fprintf(stderr, "Error with ioctl().\n");
-		return 1;
+		return;
 	}
 	
 	char *fileBuffer = malloc((n+1)*sizeof(char)); //[n+1];
@@ -1165,19 +1176,21 @@ int commit(char* projName, int sockfd) {
 	sys = system(untar);
 	if(sys < 0) {
 		fprintf(stderr, "Error un-tarring compressed .commit file.\n");
-		return 1;
+		return;
 	}
 
 		// remove tar archive from server
 	rmv = remove(".server/archive3.tar.gz");
 
 	free(fileBuffer);
-	return 0;	
+	return;	
 }
 
-
-int push(char* projName, int sockfd) {
-
+void *push(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
+	
 	char* pName = malloc(100*sizeof(char));
 	strcpy(pName, projName);
 
@@ -1214,7 +1227,7 @@ int push(char* projName, int sockfd) {
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
 		free(pName);
-		return 1;
+		return;
 	} else {
 		write(sockfd, "yes", 3);
 	}
@@ -1239,7 +1252,7 @@ int push(char* projName, int sockfd) {
 	if(i < 0) {
 		fprintf(stderr, "Error with ioctl().\n");
 		free(pName);
-		return 1;
+		return;
 	}
 	char *buffer = malloc((n+1)*sizeof(char)); //[n+1];
 
@@ -1250,7 +1263,7 @@ int push(char* projName, int sockfd) {
 		fprintf(stdout, "Client's project up-to-date. No need to continue. Exiting...\n");
 		free(pName);
 		free(buffer);
-		return 1;
+		return;
 	}
 
 		// Creates archive for the tar sent by the client.
@@ -1259,7 +1272,7 @@ int push(char* projName, int sockfd) {
 		fprintf(stderr, "Error creating archive4.tar.gz.\n");
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 	write(fd, buffer, n);
@@ -1276,7 +1289,7 @@ int push(char* projName, int sockfd) {
 		fprintf(stderr, "Error extracting .commit from archive4.tar.gz.\n");
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 		//.server/ /.commit
@@ -1291,7 +1304,7 @@ int push(char* projName, int sockfd) {
 		fprintf(stderr, "Error opening file:.\nThis file is in the client's .Manifest but not in the project.\n");
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 	off_t cp = lseek(fd, (size_t)0, SEEK_CUR);	
@@ -1306,7 +1319,7 @@ int push(char* projName, int sockfd) {
 		fprintf(stderr, "Error reading from file: .commit");
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 	close(fd);
 	bufferH[(int)fileSize] = '\0';
@@ -1360,7 +1373,7 @@ int push(char* projName, int sockfd) {
 					fprintf(stderr, "Error opening file:.\nThis file is in the client's .Manifest but not in the project.\n");
 					free(buffer);
 					free(pName);
-					return 1;
+					return;
 				}
 
 				cp = lseek(fd, (size_t)0, SEEK_CUR);	
@@ -1375,7 +1388,7 @@ int push(char* projName, int sockfd) {
 					fprintf(stderr, "Error reading from file: .commit");
 					free(buffer);
 					free(pName);
-					return 1;
+					return;
 				}
 				close(fd);
 				bufferS[(int)fileSize] = '\0';
@@ -1418,7 +1431,7 @@ int push(char* projName, int sockfd) {
 		rmv = remove(c_commit);
 		free(buffer);
 		free(pName);
-		return 0;
+		return;
 	}	
 
 
@@ -1540,7 +1553,7 @@ int push(char* projName, int sockfd) {
 		fprintf(stderr, "Error while compressing direction to store into .versions.\n");
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 
@@ -1555,7 +1568,7 @@ int push(char* projName, int sockfd) {
 		fprintf(stderr, "Error while decompressing files from client into the server's directory.\n");
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 		// Remove archive
@@ -1594,7 +1607,7 @@ int push(char* projName, int sockfd) {
 		free(c);
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 		// Gets the number of 'A' codes from the .commit file for adding to the malloc for .Manifest
@@ -1722,7 +1735,7 @@ int push(char* projName, int sockfd) {
 		free(m);
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 	write(fd, hBuf, strlen(hBuf));
@@ -1747,7 +1760,7 @@ int push(char* projName, int sockfd) {
 		free(m);
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 	fd = open(".server/archive5.tar.gz", O_RDONLY);
@@ -1757,7 +1770,7 @@ int push(char* projName, int sockfd) {
 		free(m);
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 
 	cp = lseek(fd, (size_t)0, SEEK_CUR);	
@@ -1773,7 +1786,7 @@ int push(char* projName, int sockfd) {
 		free(m);
 		free(buffer);
 		free(pName);
-		return 1;
+		return;
 	}
 	close(fd);
 
@@ -1789,11 +1802,13 @@ int push(char* projName, int sockfd) {
 	free(m);
 	free(buffer);
 	free(pName);
-	return 0;
+	return;
 }
 
-
-int history(char* projName, int sockfd) {
+void *history(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
 
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
@@ -1825,7 +1840,7 @@ int history(char* projName, int sockfd) {
 		// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 
 	
@@ -1851,7 +1866,7 @@ int history(char* projName, int sockfd) {
 
 	write(sockfd, hBuf, strlen(hBuf));
 
-	return 0;
+	return;
 }
 
 int isfile(char *path) {
@@ -1863,8 +1878,11 @@ int isfile(char *path) {
       return S_ISREG(statbuf.st_mode);
 }
 
-int rollback(char* projName, int sockfd) {
-	printf("rollback:%s\n", projName);
+void *rollback(void *input) {
+	
+	char* projName = ((struct args*)input)->str;
+	int sockfd = ((struct args*)input)->num;
+	//printf("rollback:%s\n", projName);
 	
 	int i = 0;
 	while(i < strlen(projName)) {
@@ -1913,7 +1931,7 @@ int rollback(char* projName, int sockfd) {
 	// Project existence check
 	if(checkExist == 0) {
 		fprintf(stderr, "Error: Project does not exists on the server.\n");
-		return 1;
+		return;
 	}
 	char* projPath = malloc( sizeof(char)*strlen(projName) + 23*sizeof(char) );
 	//strcat(projName);
@@ -1925,7 +1943,7 @@ int rollback(char* projName, int sockfd) {
 	d = opendir(projPath);
 	if(d == NULL) {
 		printf("directory does not exist\n");
-		return 0;
+		return;
 	}
 	
 	//tar -xvzf .server/test/.versions/1.tar.gz
@@ -1936,7 +1954,7 @@ int rollback(char* projName, int sockfd) {
 	//printf("projPath:%s\n", projPath);
 	if(!isfile(projPath)){
 		printf("tar does not exist\n");
-		return 1;
+		return;
 	}
 	
 	char* tarCommand = malloc(sizeof(char)*strlen(projPath)+11);
@@ -1976,7 +1994,7 @@ int rollback(char* projName, int sockfd) {
 		strcat(tarFile, ".tar.gz");
 	}
 	write(sockfd, "Rolledback", 2);
-	return 0;
+	return;
 }
 
 
@@ -2021,16 +2039,19 @@ int main(int argc, char *argv[] ) {
 		fprintf(stderr, "Error while binding server.\n");
 		exit(1);
 	}
+	
+	int command = 0;
+	int n, i, j;
+	i = n = j = 0;
+	struct args *Params = (struct args *)malloc(sizeof(struct args));
 	printf("Listening for connections..\n");
+	//////////////////////////////////////////////////////////////////
 	while(1) {
-
 			// Listen for client connections
 		listen(sockfd, 25);
-
 		
 			// Struct for client
 		struct sockaddr_in clientAddr;
-		
 		clientAddrInfo = sizeof(clientAddr);
 		//client connection
 		//newsockfd is client name, make a data structure for all clients
@@ -2039,10 +2060,6 @@ int main(int argc, char *argv[] ) {
 		if(newsockfd >= 0) {
 			printf("Successfully connected to a client.\n");
 		}
-
-		int n, i, j;
-		i = n = j = 0;
-
 
 		fd_set set;
 		struct timeval timeout;
@@ -2080,54 +2097,77 @@ int main(int argc, char *argv[] ) {
 			// 8 - push
 			// 9 - history
 			// 10 - rollback
-		int command = 0;
+		
 		command = getCommand(buffer);
-
+		Params->str = getProjectName(buffer);
+		Params->num = newsockfd;
+		
 		if(command == 1) {
-			char* projectName = getProjectName(buffer);
-			create(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, create, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 2) {
-			char* projectName = getProjectName(buffer);
-			destroy(projectName, newsockfd, "");
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, destroy, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 3) {
-			char* projectName = getProjectName(buffer);
-			checkout(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, checkout, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 4) {
-			char* projectName = getProjectName(buffer);
-			currentversion(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, currentversion, (void *)Params);
+			pthread_join(tid0, NULL);
+
 		} else if(command == 5) {
-			char* projectName = getProjectName(buffer);
-			update(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, update, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 6) {
-			char* projectName = getProjectName(buffer);
-			upgrade(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, upgrade, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 7) {
-			char* projectName = getProjectName(buffer);
-			commit(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, commit, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 8) {
-			char* projectName = getProjectName(buffer);
-			push(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, push, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 9) {
-			char* projectName = getProjectName(buffer);
-			history(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, history, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else if(command == 10) {
-			char* projectName = getProjectName(buffer);
-			rollback(projectName, newsockfd);
-			free(projectName);
+			
+			pthread_t tid0;
+			pthread_create(&tid0, NULL, rollback, (void *)Params);
+			pthread_join(tid0, NULL);
+			
 		} else {
 		
 		}
+		//sleep(1);
 	}
-
+	//////////////////////////////////////////////////////////////////
 	close(newsockfd);
 	close(sockfd);
 
