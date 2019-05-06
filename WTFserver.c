@@ -1079,6 +1079,8 @@ void *commit(void *input) {
 				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
 					;
 				} else {
+		
+						printf("%s : %s\n", status->d_name, projName);
 						// Project already exists...
 					if(strcmp(status->d_name, projName) == 0) {
 						checkExist = 1;

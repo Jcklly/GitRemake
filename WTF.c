@@ -1431,9 +1431,13 @@ void update(char* projName) {
 
 					// Checks UPLOAD
 					// Checks live hash against server's hash and same version .Manifest
-				if( (strcmp(s[k].file_hash, hashString) != 0) && c[0].version_number == s[0].version_number) {
+				if( (strcmp(s[k].file_hash, hashString) != 0) && (c[0].version_number == s[0].version_number) && (c[i].version_number == s[k].version_number)) {
 					fprintf(stdout, "U %s\n", c[i].file_name);
 					UMAD = 1;
+				} else if( (c[0].version_number == s[0].version_number) && (c[i].version_number != s[k].version_number)) {
+						// This case should be impossible. If this gets triggered then someone tampered with one of the manifests
+					fprintf(stderr, "Error found. Manifest version is the same but the file version is different. This should be impossible.\n");
+					fprintf(stdout, "Files:VN: %s:%d\n%s:%d\n", c[i].file_name, c[i].version_number, s[k].file_name, s[k].version_number);
 				}
 
 					// Checks MODIFY
@@ -1465,32 +1469,12 @@ void update(char* projName) {
 					}					
 
 				}
-					// Checks MODIFY
+					// Checks another UPLOAD case
 				if(strcmp(hashString, c[i].file_hash) != 0) {
 					
-					if((s[0].version_number != c[0].version_number) && (c[i].version_number == s[k].version_number) && (strcmp(hashString, c[i].file_hash) != 0)) {
-						fprintf(stdout, "M %s\n", c[i].file_name);
+					if((s[0].version_number != c[0].version_number) && (c[i].version_number == s[k].version_number) ) {
+						fprintf(stdout, "U %s\n", c[i].file_name);
 						UMAD = 1;
-
-						fd = open(updateBuf, O_APPEND | O_RDWR);
-						char vn[5];
-						bzero(vn, 5);	
-						sprintf(vn, "%d", c[i].version_number);
-
-						char toAdd[strlen(c[i].file_name) + strlen(c[i].file_hash) + 12];
-						bzero(toAdd, strlen(c[i].file_name) + strlen(c[i].file_hash) + 12);	
-						
-						strcpy(toAdd, "M ");
-						strcat(toAdd, vn);
-						strcat(toAdd, " ");
-						strcat(toAdd, c[i].file_name);
-						strcat(toAdd, " ");
-						strcat(toAdd, c[i].file_hash);
-						strcat(toAdd, "\n");
-				
-						write(fd, toAdd, strlen(toAdd));
-
-						close(fd);
 					}
 				}
 
