@@ -2322,15 +2322,19 @@ void commit(char* projName) {
 
 
 		// Checks if newly computed hashcode is different than clients
-	i = k = 1;
+	i = k = 0;
 	int check = 0;
 	while(i < numLines_c) {
-		k = 1;
+		k = 0;
 		while(k < numLines_s) {	
-			
+
+				// Makes sure it doesn't mess with the .Manifest file and version
+			if((strcmp(c[i].file_name, ".Manifest") == 0)) {
+				break;
+			}
+
 				// in both clients and servers .Manifest
 			if(strcmp(c[i].file_name, s[k].file_name) == 0) {
-
 
 					// Checks if file is updated version	
 				if(strcmp(lc[i].file_hash, c[i].file_hash) != 0) {
@@ -2367,7 +2371,7 @@ void commit(char* projName) {
 					write(fd, toAdd, strlen(toAdd));
 
 					printf("%s\n", toAdd);
-
+		
 					close(fd);
 					check = 1;
 				}
@@ -2375,7 +2379,7 @@ void commit(char* projName) {
 
 
 			}	
-
+				
 				// File in client .Manifest but not in servers.
 			if( (strcmp(c[i].file_name, s[k].file_name) != 0) && (k == numLines_s-1) ) {
 

@@ -587,6 +587,8 @@ void *destroy(void *input) {
 		fprintf(stderr, "Error removing project directory: %s\n.", pPath);
 		return;
 	}
+
+	write(sockfd, "Success", 7);
 }
 
 
