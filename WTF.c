@@ -168,13 +168,20 @@ void create(char* projName) {
 		return;
 	}
 	
-	printf("File received from server: `.Manifest`.\nPlease store it in directory: `%s`\nmv .Manifest %s\n", projName, projName);
-
-	
-	int fd = open(".Manifest", O_CREAT | O_RDWR, 0644);
+	//printf("File received from server: `.Manifest`.\nPlease store it in directory: `%s`\nmv .Manifest %s\n", projName, projName);
+	///
+	char newDir[strlen(projName) + 21];
+	strcpy(newDir, "./");
+	strcat(newDir, projName);
+	mkdir(newDir, 0700);
+	///
+	strcat(newDir, "/.Manifest");
+	int fd = open(newDir, O_CREAT | O_RDWR, 0644);
 	if (fd == -1) {
 		printf("Invalid open: `.Manifest`\n");
 		return;
+	}else{
+		printf("'%s' folder created with '.Manifest` file initalized inside\n", projName, projName);
 	}
 
 	write(fd, recBuf, strlen(recBuf));

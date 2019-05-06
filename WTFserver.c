@@ -17,7 +17,7 @@
 #include <sys/stat.h>
 #include <openssl/sha.h>
 #include "helper.h"
-pthread_mutex_t lock;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 //pthread_mutex_lock(&lock);
 //pthread_mutex_unlock(&lock);
 struct args {
@@ -378,7 +378,7 @@ void *create(void *input) {
 		status = readdir(d);
 
 		do {
-			if( status->d_type == DT_DIR ) { 
+			if( status->d_type == DT_DIR ) {
 				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
 					;
 				} else {
@@ -403,7 +403,7 @@ void *create(void *input) {
 	// Initialize .manifest inside new project directory.
 
 	strcat(newDir, "/.Manifest");
-	
+	pthread_mutex_lock(&lock);/////////////////////////////////////////////////////
         int fd = open(newDir, O_CREAT | O_RDWR | O_APPEND, 0644);
 
         if(fd < 0) {
@@ -435,7 +435,7 @@ void *create(void *input) {
 	fd = open(hPath, O_CREAT | O_RDWR, 0644);
 
 	write(fd, writeH, strlen(writeH));
-	
+	pthread_mutex_unlock(&lock);////////////////////////////////////////////////////
 	close(fd);
 	
 	char sendBuf[2];
@@ -548,6 +548,7 @@ void *destroy(void *input) {
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
+		
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
 
@@ -582,13 +583,14 @@ void *destroy(void *input) {
 	char pPath[strlen(projName) + 9];
 	strcpy(pPath, ".server/");
 	strcat(pPath, projName);
-
+	pthread_mutex_lock(&lock);
 	recursiveDelete(pPath);
 	int rmv = rmdir(pPath);
 	if(rmv < 0) {
 		fprintf(stderr, "Error removing project directory: %s\n.", pPath);
 		return;
 	}
+	pthread_mutex_unlock(&lock);
 
 	write(sockfd, "Success", 7);
 }
@@ -636,6 +638,7 @@ void *checkout(void *input) {
 	strcpy(vPath, ".server/");
 	strcat(vPath, projName);
 	strcat(vPath, "/.versions");
+	pthread_mutex_lock(&lock);///////////////////////////////////////////////////////////////////
 	mkdir(vPath, 0700);
 		
 		// Created the history file
@@ -692,6 +695,7 @@ void *checkout(void *input) {
 		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
 		return;
 	}
+	pthread_mutex_unlock(&lock);///////////////////////////////////////////////////////////////////
 	return;
 }
 
@@ -811,6 +815,7 @@ void *update(void *input) {
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
+	pthread_mutex_lock(&lock);///////////////////////////////////////////////////////////////////
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
 
@@ -884,6 +889,7 @@ void *update(void *input) {
 		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
 		return;
 	}
+	pthread_mutex_unlock(&lock);///////////////////////////////////////////////////////////////////
 
 	return;	
 }
@@ -896,6 +902,7 @@ void *upgrade(void *input) {
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
+	pthread_mutex_lock(&lock);///////////////////////////////////////////////////////////////////
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
 
@@ -1055,7 +1062,7 @@ void *upgrade(void *input) {
 		free(buffer);
 		return;
 	}
-
+	pthread_mutex_unlock(&lock);///////////////////////////////////////////////////////////////////
 	free(buffer);
 	return;
 }
@@ -1067,9 +1074,9 @@ void *commit(void *input) {
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
+	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
-	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	if(d != NULL) {
 		
 		status = readdir(d);
@@ -1213,9 +1220,9 @@ void *push(void *input) {
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
+	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
-	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	if(d != NULL) {
 		
 		status = readdir(d);
@@ -1916,6 +1923,7 @@ void *rollback(void *input) {
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
+	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	DIR *d = opendir(".server");	
 	struct dirent *status = NULL;
 
@@ -2032,6 +2040,7 @@ void *rollback(void *input) {
 		return;
 	}
 	write(fd, rMessage, strlen(rMessage));
+	pthread_mutex_unlock(&lock);//////////////////////////////////////////////////////////////////////////
 	close(fd);
 
 	return;
@@ -2148,61 +2157,61 @@ int main(int argc, char *argv[] ) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, create, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 2) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, destroy, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 3) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, checkout, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 4) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, currentversion, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 
 		} else if(command == 5) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, update, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 6) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, upgrade, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 7) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, commit, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 8) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, push, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 9) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, history, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else if(command == 10) {
 			
 			pthread_t tid0;
 			pthread_create(&tid0, NULL, rollback, (void *)Params);
-			pthread_join(tid0, NULL);
+			//pthread_join(tid0, NULL);
 			
 		} else {
 		
