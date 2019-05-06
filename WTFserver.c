@@ -17,7 +17,9 @@
 #include <sys/stat.h>
 #include <openssl/sha.h>
 #include "helper.h"
-
+pthread_mutex_t lock;
+//pthread_mutex_lock(&lock);
+//pthread_mutex_unlock(&lock);
 struct args {
     char* str;
     int num;
@@ -1067,7 +1069,7 @@ void *commit(void *input) {
 		// Check if projName already exits.
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
-
+	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	if(d != NULL) {
 		
 		status = readdir(d);
@@ -1128,7 +1130,6 @@ void *commit(void *input) {
 	}
 	close(fd);
 
-
 		// Send compressed project back to client.
 	write(sockfd, buffer, (int)fileSize);
 	printf("Sent compressed .Manifest to client for evaluation.\n");
@@ -1139,8 +1140,6 @@ void *commit(void *input) {
 		fprintf(stderr, "Error removing: .server/archive.tar.gz\n");
 		return;
 	}
-
-
 
 		// read .commit file from client and store as active commit 
 	int n = 0;
@@ -1195,7 +1194,7 @@ void *commit(void *input) {
 
 		// remove tar archive from server
 	rmv = remove(".server/archive3.tar.gz");
-
+	pthread_mutex_unlock(&lock);//////////////////////////////////////////////////////////////////////////
 	free(fileBuffer);
 	return;	
 }
@@ -1214,7 +1213,7 @@ void *push(void *input) {
 		// Check if projName already exits.
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
-
+	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	if(d != NULL) {
 		
 		status = readdir(d);
@@ -1811,7 +1810,7 @@ void *push(void *input) {
 
 		// Remove compressed .Manifest
 	rmv = remove(".server/archive5.tar.gz");
-
+	pthread_mutex_unlock(&lock);//////////////////////////////////////////////////////////////////////////
 	free(c);
 	free(m);
 	free(buffer);
