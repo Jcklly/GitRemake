@@ -2100,6 +2100,8 @@ int main(int argc, char *argv[] ) {
 			printf("Successfully connected to a client.\n");
 		}
 
+		// pthread create - data, socket, global mutex lock for that structure
+
 		fd_set set;
 		struct timeval timeout;
 
@@ -2136,7 +2138,7 @@ int main(int argc, char *argv[] ) {
 			// 8 - push
 			// 9 - history
 			// 10 - rollback
-		
+			
 		command = getCommand(buffer);
 		Params->str = getProjectName(buffer);
 		Params->num = newsockfd;

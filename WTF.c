@@ -1357,7 +1357,6 @@ void update(char* projName) {
 	parseManifest(s, ".", "Server's .Manifest");
 	parseManifest(c, projName, "Client's .Manifest");
 
-	printf("s: %s : %s\n", c[1].file_name, s[1].file_name);
 
 		// Check UMAD cases
 	int k, UMAD;
