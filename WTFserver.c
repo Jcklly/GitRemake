@@ -819,6 +819,9 @@ void *update(void *input) {
 	int checkExist = 0;
 		// Check if projName already exits.
 	pthread_mutex_lock(&lock);///////////////////////////////////////////////////////////////////
+
+
+
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
 
@@ -1077,7 +1080,7 @@ void *commit(void *input) {
 		// Will be set to 1 if projName exists
 	int checkExist = 0;
 		// Check if projName already exits.
-	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
+//	pthread_mutex_lock(&lock);//////////////////////////////////////////////////////////////////////////
 	DIR *d = opendir(".server");		
 	struct dirent *status = NULL;
 	if(d != NULL) {
@@ -1204,7 +1207,7 @@ void *commit(void *input) {
 
 		// remove tar archive from server
 	rmv = remove(".server/archive3.tar.gz");
-	pthread_mutex_unlock(&lock);//////////////////////////////////////////////////////////////////////////
+//	pthread_mutex_unlock(&lock);//////////////////////////////////////////////////////////////////////////
 	free(fileBuffer);
 	return;	
 }
@@ -2018,12 +2021,11 @@ void *rollback(void *input) {
 		strcat(tarFile, numberStr);
 		strcat(tarFile, ".tar.gz");
 	}
-	write(sockfd, "Rolledback", 2);
+	write(sockfd, "Rolledback", 10);
 	
 	fprintf(stdout, "Successfully rolled back to version: %s.\n\n", version);
 
 		// Append rollback to history.
-
 	char historyPath[strlen(projName) + 18];
 	strcpy(historyPath, ".server/");
 	strcat(historyPath, projName);

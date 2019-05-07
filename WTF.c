@@ -3123,7 +3123,8 @@ void rollback(char* projName, char* version) {
 		free(portS);
 		exit(1);
 	}
-	
+
+	printf("Rollback successful.\n");	
 }
 
 

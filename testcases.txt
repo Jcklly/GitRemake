@@ -40,9 +40,78 @@ We'll go down a list of creating and editing, rolling back, then deleting a proj
 5.) Now lets push these changes to the server.
 	- ./WTF commit proj
 	- I expect to see to 'A' codes. Here is what prints out to the console:
+		A 1 proj/file1.txt c18d547cafb43e30a993439599bd08321bea17bfedbe28b13bce8a7f298b63a2
+		A 1 proj/dir/file2.txt 79308fea7eb702a9e142832f5eb4995ae227d9a5d3a9e6f4239bffdef88b0472
+
+	- now lets push these changes to the server. This should delete the .commits everywhere, compress the previous directory, and update history. 
+	- Results: the clients manifest version should be increased by 1 and the file versions should be 1 as well since they were just added.
+		2
+		1 proj/file1.txt c18d547cafb43e30a993439599bd08321bea17bfedbe28b13bce8a7f298b63a2
+		1 proj/dir/file2.txt 79308fea7eb702a9e142832f5eb4995ae227d9a5d3a9e6f4239bffdef88b0472
+6.) Now we'll look at the history of the project so far. It should have a create 0 and a push 1 inside with the files added:
+	- ./WTF history proj
+	- Result:
+		History received from the server:
+		create
+		0
+
+		push
+		1
 		A 2 proj/file1.txt c18d547cafb43e30a993439599bd08321bea17bfedbe28b13bce8a7f298b63a2
 		A 2 proj/dir/file2.txt 79308fea7eb702a9e142832f5eb4995ae227d9a5d3a9e6f4239bffdef88b0472
 
-	- now lets push these changes to the server. This should delete the .commits everywhere, compress the previous directory, and update history. 
-	- Results: as expected.
+7.) Lets try editing file1.txt and updating and upgrading really quick. We should see a U code that means the file should be uploaded to the server since it was changed. 
+	- Result: U proj/file1.txt and proj is up to date - as expected
+
+8.) With file1.txt modified, lets try and push again to see the changes. I expect to see a U code for modified file and version number will be increased on the file and the manifest.
+	- Result:
+		U 2 proj/file1.txt ecf99ac757398c52e0b6aedf2909e458a64ac4f17305988ed5b7bfa3ac7e1c15
+
+	- .Manifest:
+		3
+		2 proj/file1.txt ecf99ac757398c52e0b6aedf2909e458a64ac4f17305988ed5b7bfa3ac7e1c15
+		1 proj/dir/file2.txt 79308fea7eb702a9e142832f5eb4995ae227d9a5d3a9e6f4239bffdef88b0472
+
+		everything as expected.
+
+9.) Lets delete file1.txt and remove it from the .Manifest and try to commit + push again. I expect a delete code and the file to be deleted with the manifest verion updated to 4:
+	- Result:
+		D 2 proj/file1.txt ecf99ac757398c52e0b6aedf2909e458a64ac4f17305988ed5b7bfa3ac7e1c15
+	- Run current version to see the updated manifest:
+		FILE NAME : VERSION NUMBER
+		.Manifest : 4
+		proj/dir/file2.txt : 1	
+
+10.) Now, lets roll back to a different version. Right now there would be 3 versions on the project in the server. The project version itself is on version 4, so lets go back to 3 before we deleted file1.txt. Calling rollback on version 3 then currentversion to see the .Manifest, we would expect to see 2 files with the server's manifest at version 3.
+	FILE NAME : VERSION NUMBER
+	.Manifest : 3
+	proj/file1.txt : 2
+	proj/dir/file2.txt : 1
+
+11.) Then we will do a update and upgrade to get the rolled back changes. On update, we should see an 'A' code for proj/file1.txt and when we upgrade our manifest should look something like this:
+	3
+	2 proj/file1.txt 4e7b0eedb0bc9223a6b09bfbf9a4d9c841e281966a49b371e3312cad006d9cc9
+	1 proj/dir/file2.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+12.) Finally, lets do a history check of everything we've done so far. Expected output is as follows:
+	create
+	0
+
+	push
+	1
+	A 1 proj/file1.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+	A 1 proj/dir/file2.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+	push
+	2
+	U 2 proj/file1.txt 4e7b0eedb0bc9223a6b09bfbf9a4d9c841e281966a49b371e3312cad006d9cc9
+
+	push
+	3
+	D 2 proj/file1.txt 4e7b0eedb0bc9223a6b09bfbf9a4d9c841e281966a49b371e3312cad006d9cc9
+
+	rollback
+	3
+
+
 

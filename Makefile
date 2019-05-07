@@ -7,4 +7,4 @@ WTF: WTF.c
 	gcc -g -o WTF WTF.c -lz -lcrypto 
 
 clean:
-	rm WTF; rm WTFserver
+	rm WTF; rm WTFserver;

@@ -1,0 +1,31 @@
+IF AT ANY POINT IT SAYS "Project doesn't exist on the server" WHEN IT SHOULD, PLEASE RESTART THE SERVER.
+
+From the steps in our testcases.txt:
+
+1.) ./WTF configure 127.0.0.1 23405
+
+2.) ./WTF checkout proj - Should say it doesn't exist.
+
+3.) ./WTF create proj 
+
+4.) 	- ./WTF add proj proj/file1.txt
+	- ./WTF add proj proj/dir/file2.txt
+	- ./WTF add proj proj/file3.txt
+
+
+5.) ./WTF commit proj && ./WTF push proj
+
+6.) ./WTF history proj  
+
+7.) ./WTF update proj && ./WTF upgrade proj
+
+8.) ./WTF commit proj && ./WTF push proj (After editing file1.txt)
+
+9.) ./WTF remove proj proj/file1.txt && ./WTF commit proj && ./WTF push proj
+
+10.) Rollback after removing file1.txt.
+	- ./WTF rollback proj 3 
+
+11.) ./WTF update proj && ./WTF upgrade proj
+
+12.) ./WTF history proj
