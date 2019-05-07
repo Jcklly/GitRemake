@@ -1,0 +1,48 @@
+We'll go down a list of creating and editing, rolling back, then deleting a project.
+
+1.) ./WTF configure <IPAddress> <PORT>
+	- 8000 <= PORT <= 65535
+		- ./WTF confgure localhost 5000 - expected: error, received: error
+		- ./WTF configure localhost 70000 - expected: error, received: error
+		- ./WTF confiure localhost 40000 - expected: worked, result: worked
+
+
+	-- Just testing the checkout
+2.) ./WTF checkout <project name>
+	- testproj exists on server
+		- ./WTF checkout testproj - expected: Project to be sent to client, results: Project was indeed sent to the client with proper print messages.
+		- ./WTF checkout nope - expected: Error saying project doesn't exist. Result: Project doesn't exist message.
+
+
+3.) ./WTF create proj
+	- Expect the server to create the project, then the client to create the same project and store the .Manifest into the client.
+	- Calling the command does indeed accomplish this, printing out the appropriate messages.
+
+4.) Next I will create 3 files, file1.txt and file2.txt, file3.txt but file2.txt will be in another directory. I will use the ./WTF add command to add them to the manifest. Then the remove command to remove file3.txt from the manifest.
+
+	- ./WTF add proj proj/file1.txt
+	- ./WTF add proj proj/dir/file2.txt
+	- ./WTF add proj proj/file3.txt
+
+	- the resulting manifest is as follows: 
+		1
+		1 proj/file1.txt c18d547cafb43e30a993439599bd08321bea17bfedbe28b13bce8a7f298b63a2
+		1 proj/dir/file2.txt 79308fea7eb702a9e142832f5eb4995ae227d9a5d3a9e6f4239bffdef88b0472
+		1 proj/file3.txt e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+	- Now I will remove file3.txt, and the resulting manifest is now:
+		1
+		1 proj/file1.txt c18d547cafb43e30a993439599bd08321bea17bfedbe28b13bce8a7f298b63a2
+		1 proj/dir/file2.txt 79308fea7eb702a9e142832f5eb4995ae227d9a5d3a9e6f4239bffdef88b0472
+
+	- Tested add and remove with files that didn't exist. Received the correct errors.
+
+5.) Now lets push these changes to the server.
+	- ./WTF commit proj
+	- I expect to see to 'A' codes. Here is what prints out to the console:
+		A 2 proj/file1.txt c18d547cafb43e30a993439599bd08321bea17bfedbe28b13bce8a7f298b63a2
+		A 2 proj/dir/file2.txt 79308fea7eb702a9e142832f5eb4995ae227d9a5d3a9e6f4239bffdef88b0472
+
+	- now lets push these changes to the server. This should delete the .commits everywhere, compress the previous directory, and update history. 
+	- Results: as expected.
+

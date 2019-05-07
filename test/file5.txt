@@ -1,4 +1,0 @@
-This is a test file in project: test
-there are
-4 lines
-in this file!

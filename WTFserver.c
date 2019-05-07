@@ -443,6 +443,8 @@ void *create(void *input) {
 	sendBuf[1] = '\n';
 
 	write(sockfd, sendBuf, 2);
+	printf("Project successfully created on the server.\n\n");
+	
 	return;
 }
 
@@ -593,6 +595,7 @@ void *destroy(void *input) {
 	pthread_mutex_unlock(&lock);
 
 	write(sockfd, "Success", 7);
+	printf("Project successfully deleted from the server.\n\n");
 }
 
 
@@ -687,7 +690,7 @@ void *checkout(void *input) {
 
 		// Send compressed project back to client.
 	write(sockfd, buffer, (int)fileSize);
-	printf("Sent compressed project to client.\n");
+	printf("Sent compressed project to client.\n\n");
 
 		// Remove tar file from server.
 	int rmv = remove(".server/archive.tar.gz");
@@ -801,7 +804,7 @@ void *currentversion(void *input) {
 
 		// Send to cliient	
 	write(sockfd, buffer, strlen(buffer));
-	printf("Current versions successfully sent to the client.\n");
+	printf("Current versions successfully sent to the client.\n\n");
 
 	free(f);
 	return;	
@@ -881,7 +884,7 @@ void *update(void *input) {
 
 		// Send compressed project back to client.
 	write(sockfd, buffer, (int)fileSize);
-	printf("Sent compressed .Manifest to client for evaluation.\n");
+	printf("Sent compressed .Manifest to client for evaluation.\n\n");
 
 		// Remove tar file from server.
 	int rmv = remove(".server/archive.tar.gz");
@@ -1053,7 +1056,7 @@ void *upgrade(void *input) {
 
 		// Send compressed project back to client.
 	write(sockfd, sendBuf, (int)fileSize);
-	printf("Sent compressed files to client.\n");
+	printf("Sent compressed files to client.\n\n");
 
 		// Remove tar file from server.
 	int rmv = remove(".server/archive1.tar.gz");
@@ -1085,9 +1088,7 @@ void *commit(void *input) {
 			if( status->d_type == DT_DIR ) { 
 				if( (strcmp(status->d_name, ".") == 0) || (strcmp(status->d_name, "..") == 0) ) {
 					;
-				} else {
-		
-						printf("%s : %s\n", status->d_name, projName);
+				} else {	
 						// Project already exists...
 					if(strcmp(status->d_name, projName) == 0) {
 						checkExist = 1;
@@ -1183,7 +1184,7 @@ void *commit(void *input) {
 		return;
 	}
 	
-	printf("Received compressed .commit file from client. Storing as active commit.\n");
+	printf("Received compressed .commit file from client. Storing as active commit.\n\n");
 
 	fd = open(".server/archive3.tar.gz", O_CREAT | O_RDWR, 0644);
 	write(fd, fileBuffer, n);	
@@ -1287,6 +1288,8 @@ void *push(void *input) {
 		free(buffer);
 		return;
 	}
+	
+	printf("Successfully received compressed files. Continuing to evaluate...\n");
 
 		// Creates archive for the tar sent by the client.
 	int fd = open(".server/archive4.tar.gz", O_CREAT | O_RDWR, 0644);
@@ -1765,7 +1768,7 @@ void *push(void *input) {
 
 		// Remove .commit
 	rmv = remove(c_commit);
-
+	printf("Successfully added/updated/removed files from .commit. Last version of project was archived and .history updated.\n");
 
 		// Send server's .Manifest back to the client
 	char sendM[strlen(mPath) + 34];
@@ -1814,7 +1817,7 @@ void *push(void *input) {
 
 		// Send compressed project back to client.
 	write(sockfd, sendMB, (int)fileSize);
-	printf("Sent compressed .Manifest to client for evaluation.\n");
+	printf("Sent compressed .Manifest to client for replacement.\n\n");
 	
 
 		// Remove compressed .Manifest
@@ -1887,7 +1890,7 @@ void *history(void *input) {
 
 
 	write(sockfd, hBuf, strlen(hBuf));
-
+	printf("Successfuly sent client history of project: %s\n\n", projName);
 	return;
 }
 
@@ -2017,7 +2020,7 @@ void *rollback(void *input) {
 	}
 	write(sockfd, "Rolledback", 2);
 	
-	fprintf(stdout, "Successfully rolled back to version: %s.\n", version);
+	fprintf(stdout, "Successfully rolled back to version: %s.\n\n", version);
 
 		// Append rollback to history.
 

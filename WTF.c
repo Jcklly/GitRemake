@@ -293,6 +293,9 @@ void destroy(char* projName) {
 		exit(1);
 	}
 	
+
+	fprintf(stdout, "Project successfully destroyed!\n");
+
 	close(sockfd);
 	free(ipAddress);
 	free(portS);
@@ -2374,7 +2377,7 @@ void commit(char* projName) {
 			if( (strcmp(c[i].file_name, s[k].file_name) != 0) && (k == numLines_s-1) ) {
 
 
-				lc[i].version_number += 1;
+//				lc[i].version_number += 1;
 		
 				fd = open(commitPath, O_APPEND | O_RDWR);
 				char vn[5];
